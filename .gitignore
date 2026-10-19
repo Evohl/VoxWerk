@@ -1,0 +1,26 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Build and packaging output
+build/
+dist/
+*.egg-info/
+
+# Downloaded models, recordings, and local runtime data
+*.onnx
+*.onnx.json
+*.wav
+*.mp3
+*.flac
+*.part
+data/
+models/
+recordings/
+
+# Local editor and agent state
+.vscode/
+.idea/
+AGENTS.md
