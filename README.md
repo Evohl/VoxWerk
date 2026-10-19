@@ -69,7 +69,7 @@ VoxWerk uses the [Piper voices catalog](https://huggingface.co/rhasspy/piper-voi
 Run the tests from the repository root:
 
 ```sh
-python -m unittest discover -s tests -v
+PYTHONPATH=src python -m unittest discover -s tests -v
 python -m compileall -q src
 ```
 
