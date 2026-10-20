@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from voxwerk.app import _download_file, catalog_entries, filter_catalog, validate_voice_id
+from voxwerk.app import _api_client_allowed, _download_file, catalog_entries, filter_catalog, validate_voice_id
 
 
 class VoiceCatalogTests(unittest.TestCase):
@@ -60,6 +60,18 @@ class VoiceCatalogTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Prüfsumme"):
                     _download_file("de/de_DE/voice/medium/voice.onnx", "a" * 32, destination)
             self.assertFalse(destination.exists())
+
+
+class ApiAccessTests(unittest.TestCase):
+    def test_remote_client_requires_non_loopback_bind_address(self) -> None:
+        self.assertFalse(_api_client_allowed("10.10.0.42", "127.0.0.1"))
+        self.assertTrue(_api_client_allowed("10.10.0.42", "0.0.0.0"))
+
+    def test_loopback_client_remains_allowed(self) -> None:
+        self.assertTrue(_api_client_allowed("127.0.0.1", "127.0.0.1"))
+
+    def test_invalid_addresses_are_rejected(self) -> None:
+        self.assertFalse(_api_client_allowed("not-an-ip", "0.0.0.0"))
 
 
 if __name__ == "__main__":

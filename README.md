@@ -45,7 +45,7 @@ Open <http://127.0.0.1:8765>. The server listens on loopback only by default. To
 voxwerk --port 8766
 ```
 
-The server also accepts `--host`, but binding to a non-loopback address exposes the interface to other machines. Do this only on a trusted network and with appropriate network controls.
+The server also accepts `--host`. Binding to a non-loopback address enables the API for remote browsers and exposes the interface without authentication to other machines. Do this only on a trusted network and with appropriate network controls. For example, `voxwerk --host 0.0.0.0` listens on all interfaces; use a specific private interface address when possible.
 
 Open **Stimmen**, filter the catalog, and download a model. Then return to **Studio**, choose the installed model, enter text, and preview or save the generated WAV. Audio devices can be selected and tested in **Einstellungen**. VoxWerk requests microphone access only after an explicit microphone-test or device-discovery action.
 

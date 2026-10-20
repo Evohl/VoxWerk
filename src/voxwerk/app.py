@@ -62,6 +62,17 @@ def validate_voice_id(value: object) -> str:
     return value
 
 
+def _api_client_allowed(client_address: str, bind_address: str) -> bool:
+    import ipaddress
+
+    try:
+        client_ip = ipaddress.ip_address(client_address)
+        bind_ip = ipaddress.ip_address(bind_address)
+    except ValueError:
+        return False
+    return client_ip.is_loopback or not bind_ip.is_loopback
+
+
 def catalog_entries(raw_catalog: object) -> list[dict[str, object]]:
     if not isinstance(raw_catalog, dict):
         raise ValueError("Der Piper-Katalog hat ein ungültiges Format")
@@ -208,13 +219,8 @@ class RequestHandler(BaseHTTPRequestHandler):
     def send_json(self, payload: object, status: int = 200) -> None:
         self.send_bytes(json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8", status)
 
-    def is_loopback_client(self) -> bool:
-        import ipaddress
-
-        try:
-            return ipaddress.ip_address(self.client_address[0]).is_loopback
-        except ValueError:
-            return False
+    def is_api_client_allowed(self) -> bool:
+        return _api_client_allowed(self.client_address[0], self.server.server_address[0])
 
     def _read_json(self) -> dict[str, object] | None:
         try:
@@ -237,8 +243,8 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         request = urlsplit(self.path)
-        if request.path.startswith("/api/") and not self.is_loopback_client():
-            self.send_json({"error": "Die API ist nur über localhost erreichbar"}, 403)
+        if request.path.startswith("/api/") and not self.is_api_client_allowed():
+            self.send_json({"error": "Remote-Zugriff erfordert einen nicht-lokalen --host-Wert beim Start von VoxWerk"}, 403)
             return
         if request.path == "/":
             page = files("voxwerk").joinpath("web/index.html").read_bytes()
@@ -294,8 +300,8 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         request = urlsplit(self.path)
-        if not self.is_loopback_client():
-            self.send_json({"error": "Die API ist nur über localhost erreichbar"}, 403)
+        if not self.is_api_client_allowed():
+            self.send_json({"error": "Remote-Zugriff erfordert einen nicht-lokalen --host-Wert beim Start von VoxWerk"}, 403)
             return
         if request.path not in {"/api/download", "/api/synthesize"}:
             self.send_json({"error": "Nicht gefunden"}, 404)
