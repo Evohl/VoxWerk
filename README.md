@@ -47,6 +47,47 @@ voxwerk --port 8766
 
 The server also accepts `--host`. Binding to a non-loopback address enables the API for remote browsers and exposes the interface without authentication to other machines. Do this only on a trusted network and with appropriate network controls. For example, `voxwerk --host 0.0.0.0` listens on all interfaces; use a specific private interface address when possible.
 
+### Run as a systemd user service
+
+Keep the virtual environment outside `~/.local/bin`; for example, install VoxWerk into `~/.venvs/voxwerk`:
+
+```sh
+python3 -m venv "$HOME/.venvs/voxwerk"
+"$HOME/.venvs/voxwerk/bin/python" -m pip install "git+https://github.com/Evohl/VoxWerk.git"
+```
+
+Optionally add a symlink so `voxwerk` is available in your shell (assuming `~/.local/bin` is on `PATH`):
+
+```sh
+mkdir -p "$HOME/.local/bin"
+ln -s "$HOME/.venvs/voxwerk/bin/voxwerk" "$HOME/.local/bin/voxwerk"
+```
+
+Create `~/.config/systemd/user/voxwerk.service`. Set `ExecStart` to the absolute venv path; systemd does not expand `~` there. Replace `/home/USERNAME` with your actual home directory:
+
+```ini
+[Unit]
+Description=VoxWerk speech studio
+
+[Service]
+ExecStart=/home/USERNAME/.venvs/voxwerk/bin/voxwerk --host 0.0.0.0 --port 8765
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+Enable and start it with:
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now voxwerk.service
+systemctl --user status voxwerk.service
+```
+
+Follow its logs with `journalctl --user -u voxwerk.service -f`. To keep the service running after logging out, enable lingering for your account with `loginctl enable-linger "$USER"`. This example binds to all network interfaces and has no authentication; restrict access with your firewall or bind to a specific trusted private address.
+
 Open **Stimmen**, filter the catalog, and download a model. Then return to **Studio**, choose the installed model, enter text, and preview or save the generated WAV. Audio devices can be selected and tested in **Einstellungen**. VoxWerk requests microphone access only after an explicit microphone-test or device-discovery action.
 
 ## Data and privacy
