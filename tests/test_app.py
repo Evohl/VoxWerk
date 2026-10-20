@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from voxwerk.app import _api_client_allowed, _download_file, catalog_entries, filter_catalog, validate_voice_id
+from voxwerk.app import _api_client_allowed, _download_file, catalog_entries, filter_catalog, language_display_name, remove_voice, validate_voice_id
 
 
 class VoiceCatalogTests(unittest.TestCase):
@@ -37,6 +37,11 @@ class VoiceCatalogTests(unittest.TestCase):
         self.assertEqual(len(filter_catalog(entries, "test german", "de_DE", "medium")), 1)
         self.assertEqual(filter_catalog(entries, language="en_US"), [])
 
+    def test_english_languages_include_region_in_display_name(self) -> None:
+        self.assertEqual(language_display_name("English", "en_US"), "English (US)")
+        self.assertEqual(language_display_name("English", "en_GB"), "English (GB)")
+        self.assertEqual(language_display_name("German", "de_DE"), "German")
+
     def test_voice_ids_reject_paths_and_unexpected_characters(self) -> None:
         self.assertEqual(validate_voice_id("de_DE-test-medium"), "de_DE-test-medium")
         self.assertEqual(validate_voice_id("pt_PT-tugão-medium"), "pt_PT-tugão-medium")
@@ -60,6 +65,17 @@ class VoiceCatalogTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Prüfsumme"):
                     _download_file("de/de_DE/voice/medium/voice.onnx", "a" * 32, destination)
             self.assertFalse(destination.exists())
+
+    def test_remove_voice_deletes_only_installed_voice_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            voice_dir = Path(temporary_directory) / "voices" / "de_DE-test-medium"
+            voice_dir.mkdir(parents=True)
+            (voice_dir / "de_DE-test-medium.onnx").write_bytes(b"model")
+            with patch("voxwerk.app.data_dir", return_value=Path(temporary_directory)):
+                remove_voice("de_DE-test-medium")
+                self.assertFalse(voice_dir.exists())
+                with self.assertRaisesRegex(ValueError, "nicht installiert"):
+                    remove_voice("de_DE-test-medium")
 
 
 class ApiAccessTests(unittest.TestCase):

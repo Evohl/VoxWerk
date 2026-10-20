@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import threading
 import time
 import unicodedata
@@ -73,6 +74,13 @@ def _api_client_allowed(client_address: str, bind_address: str) -> bool:
     return client_ip.is_loopback or not bind_ip.is_loopback
 
 
+def language_display_name(name: str, code: str) -> str:
+    normalized_code = code.replace("-", "_")
+    if name.casefold() == "english" and normalized_code.casefold().startswith("en_"):
+        return f"{name} ({normalized_code.rsplit('_', 1)[-1].upper()})"
+    return name
+
+
 def catalog_entries(raw_catalog: object) -> list[dict[str, object]]:
     if not isinstance(raw_catalog, dict):
         raise ValueError("Der Piper-Katalog hat ein ungültiges Format")
@@ -108,11 +116,13 @@ def catalog_entries(raw_catalog: object) -> list[dict[str, object]]:
             metadata_md5 = str(file_map[metadata_path].get("md5_digest", ""))
         except (AttributeError, TypeError, ValueError):
             continue
+        language_code = str(language.get("code") or "")
+        language_name = str(language.get("name_english") or language.get("name_native") or language_code or "Unknown")
         entries.append({
             "id": voice_id,
             "name": str(raw_voice.get("name") or voice_id),
-            "language": str(language.get("name_english") or language.get("name_native") or language.get("code") or "Unknown"),
-            "language_code": str(language.get("code") or ""),
+            "language": language_display_name(language_name, language_code),
+            "language_code": language_code,
             "quality": str(raw_voice.get("quality") or "unknown"),
             "speakers": int(raw_voice.get("num_speakers") or 1),
             "size_bytes": model_size,
@@ -179,13 +189,26 @@ def installed_voices() -> list[dict[str, object]]:
             language = metadata.get("language", {})
         except (OSError, json.JSONDecodeError):
             continue
+        language_code = str(language.get("code") or "")
+        language_name = str(language.get("name_english") or language_code or "Unknown")
         voices.append({
             "id": voice_id,
             "name": str(metadata.get("dataset") or voice_id),
-            "language": str(language.get("name_english") or language.get("code") or "Unknown"),
+            "language": language_display_name(language_name, language_code),
             "path": str(model_path),
         })
     return voices
+
+
+def remove_voice(voice_id: object) -> None:
+    voice_id = validate_voice_id(voice_id)
+    voices_root = data_dir() / "voices"
+    voice_dir = voices_root / voice_id
+    if voice_dir.is_symlink() or not voice_dir.is_dir():
+        raise ValueError("Stimme ist nicht installiert")
+    with SYNTHESIS_LOCK:
+        load_voice.cache_clear()
+        shutil.rmtree(voice_dir)
 
 
 @lru_cache(maxsize=2)
@@ -303,7 +326,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not self.is_api_client_allowed():
             self.send_json({"error": "Remote-Zugriff erfordert einen nicht-lokalen --host-Wert beim Start von VoxWerk"}, 403)
             return
-        if request.path not in {"/api/download", "/api/synthesize"}:
+        if request.path not in {"/api/download", "/api/remove", "/api/synthesize"}:
             self.send_json({"error": "Nicht gefunden"}, 404)
             return
         payload = self._read_json()
@@ -312,6 +335,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         try:
             if request.path == "/api/download":
                 self._download_voice(payload)
+            elif request.path == "/api/remove":
+                voice_id = validate_voice_id(payload.get("id"))
+                remove_voice(voice_id)
+                self.send_json({"voices": installed_voices()})
             else:
                 self._synthesize(payload)
         except (ValueError, OSError, URLError, TimeoutError) as error:
@@ -345,15 +372,15 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not isinstance(text, str) or not text.strip() or len(text.strip()) > MAX_TEXT_LENGTH:
             raise ValueError("Text fehlt oder überschreitet 2500 Zeichen")
         voice_id = validate_voice_id(payload.get("voice"))
-        voice = next((item for item in installed_voices() if item["id"] == voice_id), None)
-        if voice is None:
-            raise ValueError("Stimme ist nicht installiert")
         try:
             rate = min(1.5, max(0.65, float(payload.get("rate", 1.0))))
         except (TypeError, ValueError):
             rate = 1.0
         output = io.BytesIO()
         with SYNTHESIS_LOCK:
+            voice = next((item for item in installed_voices() if item["id"] == voice_id), None)
+            if voice is None:
+                raise ValueError("Stimme ist nicht installiert")
             from piper import SynthesisConfig
 
             model = load_voice(str(voice["path"]))

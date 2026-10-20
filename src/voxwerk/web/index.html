@@ -223,12 +223,14 @@
     }
 
     function renderInstalledVoices() {
+      const selectedVoice = voiceSelect.value;
       voiceSelect.replaceChildren(...installedVoices.map(voice => {
         const option = document.createElement('option');
         option.value = voice.id;
         option.textContent = `${voice.name} · ${voice.language}`;
         return option;
       }));
+      if (installedVoices.some(voice => voice.id === selectedVoice)) voiceSelect.value = selectedVoice;
       voiceSelect.disabled = installedVoices.length === 0;
       if (!installedVoices.length) {
         voiceSelect.add(new Option('Noch keine Stimmen installiert', ''));
@@ -385,9 +387,9 @@
         const action = document.createElement('button');
         action.className = `button ${installed.has(voice.id) ? 'quiet' : 'primary'}`;
         action.type = 'button';
-        action.textContent = installed.has(voice.id) ? 'Installiert' : 'Herunterladen';
-        action.disabled = installed.has(voice.id);
-        if (!installed.has(voice.id)) action.addEventListener('click', () => downloadVoice(voice, action));
+        action.textContent = installed.has(voice.id) ? 'Entfernen' : 'Herunterladen';
+        if (installed.has(voice.id)) action.addEventListener('click', () => removeVoice(voice, action));
+        else action.addEventListener('click', () => downloadVoice(voice, action));
         row.append(details, quality, size, action);
         return row;
       }));
@@ -403,6 +405,25 @@
         await loadInstalledVoices();
         renderCatalog(catalogVoices.length, Number(document.querySelector('#catalog-status').textContent.split(' von ')[1]?.split(' ')[0]?.replaceAll(',', '')) || catalogVoices.length);
         document.querySelector('#catalog-status').textContent = `${voice.name} wurde heruntergeladen und geprüft.`;
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Erneut versuchen';
+        button.title = error.message;
+        document.querySelector('#catalog-status').textContent = error.message;
+      }
+    }
+
+    async function removeVoice(voice, button) {
+      if (!confirm(`Stimme "${voice.name}" wirklich vom Server entfernen?`)) return;
+      button.disabled = true;
+      button.textContent = 'Entfernt…';
+      try {
+        const response = await fetch('/api/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: voice.id }) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Stimme konnte nicht entfernt werden.');
+        await loadInstalledVoices();
+        renderCatalog(catalogVoices.length, Number(document.querySelector('#catalog-status').textContent.split(' von ')[1]?.split(' ')[0]?.replaceAll(',', '')) || catalogVoices.length);
+        document.querySelector('#catalog-status').textContent = `${voice.name} wurde entfernt.`;
       } catch (error) {
         button.disabled = false;
         button.textContent = 'Erneut versuchen';

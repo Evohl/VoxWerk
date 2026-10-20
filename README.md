@@ -6,6 +6,7 @@ VoxWerk is a local-first speech studio for browsing Piper voices, downloading on
 
 - Browse and filter the Piper voice catalog by language, quality, and name.
 - Download individual models on demand with catalog-provided size and checksum verification.
+- Remove installed voice models from the library when they are no longer needed.
 - Enter text, adjust speaking rate, preview speech, and save WAV recordings.
 - Select browser audio input and output devices, test the microphone level, and play an output test tone.
 - Keep models and recordings in the user's data directory; keep device choices in browser-local storage.
@@ -100,6 +101,17 @@ Open **Stimmen**, filter the catalog, and download a model. Then return to **Stu
 - The catalog and selected model files are checked against catalog metadata before downloaded files are activated.
 
 Deleting the VoxWerk data directory removes downloaded voices and saved recordings. Deleting browser-local storage resets saved device selections.
+
+### Add a custom Piper voice manually
+
+There is no separate custom-voice directory or import screen. Copy a compatible Piper model and its metadata JSON into a subdirectory under the VoxWerk data directory. The model and metadata files must share the same basename:
+
+```text
+~/.local/share/voxwerk/voices/<voice-id>/<voice-id>.onnx
+~/.local/share/voxwerk/voices/<voice-id>/<voice-id>.onnx.json
+```
+
+For example, `en_US-example-medium.onnx` and `en_US-example-medium.onnx.json` go in `~/.local/share/voxwerk/voices/en_US-example-medium/`. If `XDG_DATA_HOME` is set, use `$XDG_DATA_HOME/voxwerk/voices/<voice-id>/` instead. After copying both files, reload VoxWerk in the browser; the voice will appear in the installed voice list and can be removed there. The model must be compatible with the installed Piper version. Check its license and attribution terms before use.
 
 ## Voice models and licenses
 
