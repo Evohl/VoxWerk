@@ -333,6 +333,21 @@ class WakewordStore:
             return []
         return [_read_json(path) for path in sorted(run_dir.glob("*/run.json"), reverse=True) if path.is_file() and not path.is_symlink()]
 
+    def update_run(self, wakeword_id: object, run_id: object, *, status: str, training: dict[str, Any]) -> dict[str, Any]:
+        wakeword_id = validate_slug(wakeword_id)
+        if not isinstance(run_id, str) or not re.fullmatch(r"run-[0-9]{8}-[0-9]{6}-[a-f0-9]{8}", run_id):
+            raise ValueError("Ungültige Trainingslauf-ID")
+        if status not in {"prepared", "queued", "running", "completed", "failed", "stopped"}:
+            raise ValueError("Ungültiger Trainingsstatus")
+        run_path = self._project_dir(wakeword_id) / "runs" / run_id / "run.json"
+        if run_path.is_symlink() or not run_path.is_file():
+            raise ValueError("Trainingslauf nicht gefunden")
+        run = _read_json(run_path)
+        run["status"] = status
+        run["training"] = {**run.get("training", {}), **training}
+        _write_json(run_path, run)
+        return run
+
     def delete_run(self, wakeword_id: object, run_id: object) -> None:
         wakeword_id = validate_slug(wakeword_id)
         if not isinstance(run_id, str) or not re.fullmatch(r"run-[0-9]{8}-[0-9]{6}-[a-f0-9]{8}", run_id):

@@ -25,6 +25,8 @@ from urllib.request import urlopen
 
 from importlib.resources import files
 from .wakeword_data import MAX_RECORDS, MAX_SAMPLE_BYTES, WakewordStore
+from .wakeword_training import TrainingStopped, run_training_pipeline, save_training_workspace, training_environment, validate_training_parameters, _wav_samples
+from .wakeword_testing import list_test_models, score_test_audio, score_test_pcm_frame
 
 
 APP_NAME = "voxwerk"
@@ -38,6 +40,9 @@ VOICE_ID_PATTERN = re.compile(r"[^/\\]{1,100}\Z")
 SYNTHESIS_LOCK = threading.Lock()
 GENERATION_JOBS: dict[str, dict[str, object]] = {}
 GENERATION_JOBS_LOCK = threading.Lock()
+TRAINING_JOBS: dict[str, dict[str, object]] = {}
+TRAINING_JOBS_LOCK = threading.Lock()
+TRAINING_STOP_EVENTS: dict[str, threading.Event] = {}
 LOGGER = logging.getLogger(APP_NAME)
 
 
@@ -77,6 +82,68 @@ def _api_client_allowed(client_address: str, bind_address: str) -> bool:
     except ValueError:
         return False
     return client_ip.is_loopback or not bind_ip.is_loopback
+
+
+def _run_wakeword_training(
+    wakeword_id: str,
+    run_id: str,
+    environment: dict[str, object],
+    parameters: dict[str, object],
+) -> None:
+    store = WakewordStore(data_dir())
+    run_dir = store._project_dir(wakeword_id) / "runs" / run_id
+
+    stop_event = TRAINING_STOP_EVENTS.get(run_id, threading.Event())
+
+    def set_stage(stage: str, progress: int) -> None:
+        store.update_run(wakeword_id, run_id, status="running", training={"stage": stage, "progress": progress})
+        with TRAINING_JOBS_LOCK:
+            TRAINING_JOBS[run_id] = {"status": "running", "stage": stage, "progress": progress, "wakeword_id": wakeword_id}
+
+    try:
+        store.update_run(wakeword_id, run_id, status="running", training={"stage": "Training wird vorbereitet", "progress": 0})
+        run = next(item for item in store.list_runs(wakeword_id) if item["id"] == run_id)
+        model_dir = run_training_pipeline(
+            Path(environment["workspace"]),
+            Path(environment["python"]),
+            run_dir,
+            run,
+            parameters,
+            set_stage,
+            stop_event.is_set,
+        )
+        store.update_run(
+            wakeword_id,
+            run_id,
+            status="completed",
+            training={"stage": "Training abgeschlossen", "progress": 100, "model_directory": str(model_dir.relative_to(run_dir)), "finished_at": int(time.time())},
+        )
+        with TRAINING_JOBS_LOCK:
+            TRAINING_JOBS[run_id] = {"status": "completed", "progress": 100, "wakeword_id": wakeword_id}
+    except TrainingStopped:
+        store.update_run(
+            wakeword_id,
+            run_id,
+            status="stopped",
+            training={"stage": "Training abgebrochen", "finished_at": int(time.time())},
+        )
+        with TRAINING_JOBS_LOCK:
+            TRAINING_JOBS[run_id] = {"status": "stopped", "wakeword_id": wakeword_id}
+    except Exception as error:
+        LOGGER.exception("Wakeword training failed for run %s", run_id)
+        try:
+            store.update_run(
+                wakeword_id,
+                run_id,
+                status="failed",
+                training={"stage": "Training fehlgeschlagen", "error": str(error), "finished_at": int(time.time())},
+            )
+        except (OSError, ValueError):
+            LOGGER.exception("Could not persist failure status for run %s", run_id)
+        with TRAINING_JOBS_LOCK:
+            TRAINING_JOBS[run_id] = {"status": "failed", "wakeword_id": wakeword_id}
+    finally:
+        TRAINING_STOP_EVENTS.pop(run_id, None)
 
 
 def language_display_name(name: str, code: str) -> str:
@@ -401,6 +468,32 @@ class RequestHandler(BaseHTTPRequestHandler):
             store = self._wakeword_store()
             self.send_json({"profiles": store.list_profiles(), "wakewords": store.list_wakewords()})
             return
+        if request.path == "/api/wakeword/training/options":
+            environment = training_environment()
+            self.send_json({key: value for key, value in environment.items() if key not in {"workspace", "python"}})
+            return
+        if request.path == "/api/settings/wakeword-workspace":
+            import ipaddress
+
+            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                self.send_json({"error": "Trainingspfad kann nur über localhost geändert werden"}, 403)
+                return
+            environment = training_environment()
+            self.send_json({key: environment[key] for key in ("workspace_path", "workspace_source", "workspace_locked", "ready", "message")})
+            return
+        if request.path == "/api/wakeword/test/models":
+            import ipaddress
+
+            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                self.send_json({"error": "Wakeword-Tests sind nur über localhost verfügbar"}, 403)
+                return
+            environment = training_environment()
+            try:
+                models = list_test_models(Path(environment["workspace"]), self._wakeword_store())
+                self.send_json({"models": models, "ready": environment["ready"], "message": environment["message"]})
+            except (OSError, ValueError) as error:
+                self.send_json({"error": str(error)}, 500)
+            return
         if request.path.startswith("/api/wakeword/"):
             parts = request.path.strip("/").split("/")
             store = self._wakeword_store()
@@ -480,6 +573,94 @@ class RequestHandler(BaseHTTPRequestHandler):
         request = urlsplit(self.path)
         if not self.is_api_client_allowed():
             self.send_json({"error": "Remote-Zugriff erfordert einen nicht-lokalen --host-Wert beim Start von VoxWerk"}, 403)
+            return
+        if request.path == "/api/settings/wakeword-workspace":
+            import ipaddress
+
+            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                self.send_json({"error": "Trainingspfad kann nur über localhost geändert werden"}, 403)
+                return
+            payload = self._read_json()
+            if payload is None:
+                return
+            if not isinstance(payload, dict):
+                self.send_json({"error": "Einstellungen müssen als JSON-Objekt übermittelt werden"}, 400)
+                return
+            try:
+                environment = save_training_workspace(payload.get("path"))
+                self.send_json({key: environment[key] for key in ("workspace_path", "workspace_source", "workspace_locked", "ready", "message", "datasets")})
+            except (OSError, ValueError) as error:
+                self.send_json({"error": str(error)}, 400)
+            return
+        if request.path == "/api/wakeword/test/score":
+            import ipaddress
+
+            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                self.send_json({"error": "Wakeword-Tests sind nur über localhost verfügbar"}, 403)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                self.send_json({"error": "Ungültige Audiogröße"}, 400)
+                return
+            if not 0 < length <= 50 * 1024 * 1024:
+                self.send_json({"error": "Audio fehlt oder überschreitet 50 MB"}, 413)
+                return
+            params = parse_qs(request.query)
+            model_id = params.get("model", [""])[0]
+            cutoff = params.get("cutoff", ["0.5"])[0]
+            live = params.get("live", ["0"])[0] == "1"
+            reset_worker = params.get("reset", ["0"])[0] == "1"
+            try:
+                environment = training_environment()
+                result = score_test_audio(
+                    self.rfile.read(length),
+                    model_id,
+                    cutoff,
+                    Path(environment["workspace"]),
+                    self._wakeword_store(),
+                    live=live,
+                    reset_worker=reset_worker,
+                )
+                self.send_json(result)
+            except ValueError as error:
+                self.send_json({"error": str(error)}, 400)
+            except RuntimeError as error:
+                self.send_json({"error": str(error)}, 409)
+            except OSError as error:
+                self.send_json({"error": str(error)}, 500)
+            return
+        if request.path == "/api/wakeword/test/stream":
+            import ipaddress
+
+            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                self.send_json({"error": "Wakeword-Tests sind nur über localhost verfügbar"}, 403)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                self.send_json({"error": "Ungültige PCM-Frame-Größe"}, 400)
+                return
+            if not 0 < length <= 128 * 1024:
+                self.send_json({"error": "PCM-Frame fehlt oder überschreitet 4 Sekunden"}, 413)
+                return
+            params = parse_qs(request.query)
+            try:
+                result = score_test_pcm_frame(
+                    self.rfile.read(length),
+                    params.get("model", [""])[0],
+                    params.get("cutoff", ["0.5"])[0],
+                    Path(training_environment()["workspace"]),
+                    self._wakeword_store(),
+                    reset_worker=params.get("reset", ["0"])[0] == "1",
+                )
+                self.send_json(result)
+            except ValueError as error:
+                self.send_json({"error": str(error)}, 400)
+            except RuntimeError as error:
+                self.send_json({"error": str(error)}, 409)
+            except OSError as error:
+                self.send_json({"error": str(error)}, 500)
             return
         if request.path.startswith("/api/wakeword/"):
             self._handle_wakeword_post(request)
@@ -589,8 +770,32 @@ class RequestHandler(BaseHTTPRequestHandler):
                 project = store.save_wakeword(payload, payload.get("id"))
                 self.send_json({"wakeword": project})
             elif parts == ["api", "wakeword", "delete"]:
-                store.delete_wakeword(payload.get("id"))
+                wakeword_id = payload.get("id")
+                with TRAINING_JOBS_LOCK:
+                    if any(job.get("wakeword_id") == wakeword_id and job.get("status") in {"queued", "running"} for job in TRAINING_JOBS.values()):
+                        raise ValueError("Wakeword kann während eines Trainings nicht gelöscht werden")
+                store.delete_wakeword(wakeword_id)
                 self.send_json({"wakewords": store.list_wakewords()})
+            elif parts == ["api", "wakeword", "training", "start"]:
+                import ipaddress
+
+                if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                    raise ValueError("Trainingsstarts sind nur über localhost erlaubt")
+                self._start_wakeword_training(store, payload)
+            elif parts == ["api", "wakeword", "training", "stop"]:
+                import ipaddress
+
+                if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                    raise ValueError("Trainingsabbrüche sind nur über localhost erlaubt")
+                run_id = payload.get("run_id")
+                with TRAINING_JOBS_LOCK:
+                    job = TRAINING_JOBS.get(str(run_id))
+                    stop_event = TRAINING_STOP_EVENTS.get(str(run_id))
+                    if job is None or job.get("status") not in {"queued", "running"} or stop_event is None:
+                        raise ValueError("Für diesen Trainingslauf ist kein aktiver Abbruch möglich")
+                    stop_event.set()
+                    job.update({"status": "running", "stage": "Abbruch wird ausgeführt"})
+                self.send_json({"run_id": str(run_id), "status": "stopping"}, 202)
             elif len(parts) == 5 and parts[2] == "samples" and parts[4] == "edit":
                 sample = store.update_sample(parts[3], payload.get("sample_id"), payload)
                 self.send_json({"sample": sample})
@@ -604,6 +809,9 @@ class RequestHandler(BaseHTTPRequestHandler):
                 run = store.create_run(parts[3], payload)
                 self.send_json({"run": run}, 201)
             elif len(parts) == 6 and parts[2] == "runs" and parts[5] == "delete":
+                with TRAINING_JOBS_LOCK:
+                    if TRAINING_JOBS.get(parts[4], {}).get("status") in {"queued", "running"}:
+                        raise ValueError("Trainingslauf kann während der Ausführung nicht gelöscht werden")
                 store.delete_run(parts[3], parts[4])
                 self.send_json({"runs": store.list_runs(parts[3])})
             else:
@@ -613,6 +821,59 @@ class RequestHandler(BaseHTTPRequestHandler):
         except Exception as error:
             LOGGER.exception("Wakeword request failed for %s", request.path)
             self.send_json({"error": f"VoxWerk konnte die Wakeword-Anfrage nicht abschließen: {error}"}, 500)
+
+    def _start_wakeword_training(self, store: WakewordStore, payload: dict[str, object]) -> None:
+        wakeword_id = payload.get("wakeword_id")
+        project = next((item for item in store.list_wakewords() if item["id"] == wakeword_id), None)
+        if project is None:
+            raise ValueError("Wakeword-Projekt nicht gefunden")
+        run_id = payload.get("run_id")
+        run = next((item for item in store.list_runs(str(wakeword_id)) if item["id"] == run_id), None)
+        if run is None:
+            raise ValueError("Datensatz-Snapshot nicht gefunden")
+        if run.get("status") != "prepared" or run.get("training"):
+            raise ValueError("Training kann nur aus einem vorbereiteten Snapshot gestartet werden")
+        profile = run.get("profile")
+        if profile is None or profile.get("engine") != "microwakeword":
+            raise ValueError("Das Snapshot-Profil muss die Engine microWakeWord verwenden")
+
+        environment = training_environment()
+        if not environment["ready"]:
+            raise ValueError(str(environment["message"]))
+        parameters = validate_training_parameters(payload)
+        available = {item["id"] for item in environment["datasets"] if item["available"]}
+        if any(weight > 0 and dataset_id not in available for dataset_id, weight in parameters["dataset_weights"].items()):
+            raise ValueError("Ein aktivierter Feature-Datensatz fehlt in der microWakeWord-Umgebung")
+
+        run_dir = store._project_dir(str(wakeword_id)) / "runs" / run["id"]
+        _wav_samples(run_dir, run)
+
+        training = {
+            "stage": "Wartet auf Start",
+            "progress": 0,
+            "parameters": parameters,
+            "log_file": "training.log",
+            "model_directory": "model",
+            "created_at": int(time.time()),
+        }
+        with TRAINING_JOBS_LOCK:
+            if any(job.get("status") in {"queued", "running"} for job in TRAINING_JOBS.values()):
+                    raise ValueError("Es läuft bereits ein microWakeWord-Training")
+            for job_id, job in list(TRAINING_JOBS.items()):
+                if len(TRAINING_JOBS) < 32:
+                    break
+                if job.get("status") in {"completed", "failed"}:
+                    TRAINING_JOBS.pop(job_id, None)
+            run = store.update_run(str(wakeword_id), run["id"], status="queued", training=training)
+            TRAINING_JOBS[run["id"]] = {"status": "queued", "wakeword_id": str(wakeword_id)}
+            TRAINING_STOP_EVENTS[run["id"]] = threading.Event()
+        thread = threading.Thread(
+            target=_run_wakeword_training,
+            args=(str(wakeword_id), run["id"], environment, parameters),
+            daemon=True,
+        )
+        thread.start()
+        self.send_json({"run": run}, 202)
 
     def _download_voice(self, payload: dict[str, object]) -> None:
         voice_id = validate_voice_id(payload.get("id"))

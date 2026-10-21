@@ -115,7 +115,32 @@
     .wakeword-tabs { display: flex; gap: 4px; margin: 0 0 18px; border-bottom: 1px solid var(--line); }
     .wakeword-tabs button { min-height: 42px; padding: 0 16px; color: var(--muted); background: transparent; border: 0; border-bottom: 3px solid transparent; font-weight: 800; }
     .wakeword-tabs button[aria-selected="true"] { color: var(--acid); border-bottom-color: var(--acid); }
+    .training-dataset { display: grid; grid-template-columns: minmax(0, 1fr) minmax(105px, .35fr); align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .training-dataset label { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 11px; }
+    .training-dataset input[type="number"] { width: 100%; }
+    .training-job-status { min-height: 22px; margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .training-progress { width: 100%; height: 9px; margin: 0 0 8px; appearance: none; background: #dfe5e7; border: 0; }
+    .training-progress::-webkit-progress-bar { background: #dfe5e7; }
+    .training-progress::-webkit-progress-value { background: var(--acid); transition: width .2s ease; }
+    .training-progress::-moz-progress-bar { background: var(--acid); }
+    .parameter-help { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+    .wakeword-test-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, .7fr); gap: 28px; align-items: start; }
+    .wakeword-test-panel { min-width: 0; padding: 20px 0; border-top: 1px solid var(--line); }
+    .wakeword-test-panel:first-child { padding-top: 0; border-top: 0; }
+    .test-score { margin: 20px 0 8px; font-family: Georgia, "Times New Roman", serif; font-size: 44px; line-height: 1; }
+    .test-score-meta { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; }
+    .test-live-status { min-height: 22px; margin-top: 12px; color: var(--muted); font-size: 11px; }
+    .test-live-status[aria-busy="true"] { color: var(--orange); }
+    .live-test-controls { display: grid; grid-template-columns: minmax(160px, 1fr) auto; align-items: end; gap: 12px; }
+    .live-test-controls .button { min-width: 138px; justify-content: center; }
+    .live-score-chart { display: block; width: 100%; height: 190px; margin-top: 22px; background: #111a1e; border: 1px solid var(--line); }
+    .live-chart-legend { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; color: var(--muted); font-size: 10px; }
+    .live-chart-key { display: inline-flex; align-items: center; gap: 7px; }
+    .live-chart-key::before { content: ""; width: 16px; height: 2px; background: var(--acid); }
+    .live-chart-key.cutoff::before { background: var(--orange); }
+    .live-chart-summary { display: flex; justify-content: space-between; gap: 12px; margin-top: 9px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
     .wakeword-layout { display: grid; grid-template-columns: minmax(220px, .7fr) minmax(0, 1.6fr); border: 1px solid var(--line); background: var(--white); }
+    .wakeword-layout.testing { display: block; }
     .wakeword-sidebar { padding: 22px; background: #202c31; border-right: 1px solid var(--line); }
     .wakeword-main { min-width: 0; padding: 24px; }
     .wakeword-item { width: 100%; padding: 12px 0; display: block; color: var(--ink); text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); }
@@ -125,6 +150,8 @@
     .wakeword-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-bottom: 22px; }
     .wakeword-form .wide { grid-column: 1 / -1; }
     .wakeword-form input, .wakeword-form select, .wakeword-form textarea { width: 100%; min-height: 40px; padding: 9px 11px; color: var(--ink); background: #111a1e; border: 1px solid var(--line); border-radius: 2px; }
+    #wakeword-workspace-path { width: 100%; height: 40px; min-height: 40px; padding: 9px 11px; color: var(--ink); background: #111a1e; border: 1px solid var(--line); border-radius: 2px; }
+    #wakeword-workspace-path:focus { border-color: var(--acid); box-shadow: 0 0 0 3px rgb(77 225 239 / 14%); outline: 0; }
     .wakeword-form textarea { min-height: 78px; resize: vertical; font: inherit; }
     .wakeword-form input[type="checkbox"], .ww-checkbox input[type="checkbox"], .generator-voice input[type="checkbox"] { width: 18px; height: 18px; min-height: 18px; margin: 0; flex: 0 0 18px; accent-color: var(--acid); }
     .ww-section { padding: 20px 0; border-top: 1px solid var(--line); }
@@ -187,6 +214,7 @@
       .side, .settings-side { border-top: 1px solid var(--line); border-left: 0; }
       .wakeword-layout { grid-template-columns: 1fr; }
       .wakeword-sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
+      .wakeword-test-grid { grid-template-columns: 1fr; gap: 10px; }
       .generator-voice { grid-template-columns: minmax(0, 1fr) 1fr 42px; gap: 8px; }
       .ww-row.sample-row { grid-template-columns: 22px minmax(0, 1fr) auto; grid-template-areas: "select title actions" "transcript transcript transcript" "secondary secondary secondary"; gap: 8px; }
       .sample-secondary { align-items: flex-start; flex-direction: column; gap: 4px; }
@@ -197,6 +225,9 @@
     }
     @media (max-width: 470px) {
       .local-state { font-size: 9px; }
+      .wakeword-tabs button { flex: 1; padding-inline: 3px; font-size: 10px; white-space: nowrap; }
+      .live-test-controls { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+      .live-test-controls .button { min-width: 112px; padding-inline: 10px; }
       .form-row { grid-template-columns: 1fr; gap: 12px; }
       .voices-toolbar { grid-template-columns: 1fr; }
       .text-foot { flex-direction: column; }
@@ -269,6 +300,13 @@
             <div class="setting"><p class="setting-title">Mikrofon</p><p class="setting-note">Eingabegerät für Mikrofonaufnahmen und künftige Wakeword-Funktionen.</p><label class="label" for="input-device">Eingabegerät</label><select id="input-device"><option value="">Systemstandard</option></select><div class="actions" style="margin-top:12px"><button class="button quiet" id="test-input" type="button"><svg viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="13" rx="4"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3m-4 0h8"/></svg>Mikrofon testen</button><span class="status" id="input-level" role="status" aria-live="polite">Mikrofon geschlossen</span></div></div>
             <div class="setting"><p class="setting-title">Audioausgabe</p><p class="setting-note">Legt fest, über welches Gerät die Vorschau abgespielt wird.</p><label class="label" for="output-device">Ausgabegerät</label><select id="output-device"><option value="">Systemstandard</option></select></div>
             <div class="actions"><button class="button primary" id="test-output" type="button"><svg viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6l-5 4H4zm13-1a5 5 0 0 1 0 6m2-9a9 9 0 0 1 0 12"/></svg>Ausgabe testen</button><span class="status" id="device-status" role="status" aria-live="polite"></span></div>
+            <div class="setting" id="wakeword-workspace-setting">
+              <p class="setting-title">Wakeword-Trainingsdaten</p>
+              <p class="setting-note">Ordner des microWakeWord-Projekts mit Python-Umgebung, Modellen und Trainingsdatensätzen.</p>
+              <label class="label" for="wakeword-workspace-path">Arbeitsordner</label>
+              <input id="wakeword-workspace-path" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="/home/benutzer/wakeword">
+              <div class="actions" style="margin-top:12px"><button class="button quiet" id="save-wakeword-workspace" type="button">Pfad speichern</button><span class="status" id="wakeword-workspace-status" role="status" aria-live="polite"></span></div>
+            </div>
           </section>
           <aside class="settings-side"><div class="section-head"><h2>Geräteschutz</h2></div><p class="permission">VoxWerk öffnet dein Mikrofon nicht automatisch. Browser erlauben die vollständige Geräteauswahl gegebenenfalls erst nach deiner Mikrofonfreigabe.</p><p class="footnote">Die Auswahl wird in diesem Browser gespeichert. Audioausgabe kann je nach Browser unterschiedlich unterstützt sein.</p></aside>
         </div>
@@ -276,22 +314,24 @@
       <section class="view hidden" id="view-wakeword">
         <div class="intro"><p class="kicker">Lokales Training · microWakeWord</p><h1>Wakewords, sauber getrennt.</h1><p>Profile beschreiben die Trainingsmethode. Jedes Wakeword verwaltet eigene Aufnahmen und ausgewählte Datensatzstände.</p></div>
         <div class="wakeword-tabs" role="tablist" aria-label="Wakeword-Verwaltung">
-          <button id="wakewords-tab" type="button" role="tab" aria-selected="true" aria-controls="wakeword-panel">Wakewords</button>
-          <button id="profiles-tab" type="button" role="tab" aria-selected="false" aria-controls="wakeword-panel">Trainingsprofile</button>
+          <button id="profiles-tab" type="button" role="tab" aria-selected="true" aria-controls="wakeword-panel">Trainingsprofile</button>
+          <button id="wakewords-tab" type="button" role="tab" aria-selected="false" aria-controls="wakeword-panel">Wakewords</button>
+          <button id="training-tab" type="button" role="tab" aria-selected="false" aria-controls="wakeword-panel">Training starten</button>
+          <button id="test-tab" type="button" role="tab" aria-selected="false" aria-controls="wakeword-panel">Wakewords testen</button>
         </div>
         <div class="wakeword-toolbar">
-          <button class="button primary" id="new-wakeword" type="button">+ Neues Wakeword</button>
           <button class="button primary hidden" id="new-profile" type="button">+ Trainingsprofil</button>
+          <button class="button primary" id="new-wakeword" type="button">+ Neues Wakeword</button>
         </div>
         <div class="wakeword-layout">
           <aside class="wakeword-sidebar" id="wakeword-panel" role="tabpanel" aria-labelledby="wakewords-tab">
-            <div class="section-head"><h2>Wakewords</h2><span class="micro" id="wakeword-count">0</span></div>
+            <div class="section-head"><h2>Trainingsprofile</h2><span class="micro" id="wakeword-count">0</span></div>
             <div id="wakeword-list"><div class="empty">Noch keine Wakewords angelegt.</div></div>
             <div id="profile-list" class="hidden"><div class="empty">Noch keine Profile angelegt.</div></div>
           </aside>
           <section class="wakeword-main" id="wakeword-detail"><div class="empty">Lege ein Wakeword an oder wähle ein bestehendes Projekt.</div></section>
         </div>
-        <p class="footnote">Trainingsläufe sind zunächst prüfbare Datensatz-Snapshots. Das microWakeWord-Training und Modelltests werden erst nach Einrichtung der separaten Trainingsumgebung ausführbar.</p>
+        <p class="footnote">microWakeWord-Training läuft lokal und nur mit WAV-Samples aus dem ausgewählten Snapshot. Modell und Logs bleiben im Run-Ordner; ein Export oder Flash auf ein Gerät erfolgt nicht automatisch.</p>
       </section>
     </main>
   </div>
@@ -310,7 +350,25 @@
     let wakewordState = { profiles: [], wakewords: [] };
     let selectedWakewordId = '';
     let selectedProfileId = '';
-    let activeWakewordTab = 'wakewords';
+    let activeWakewordTab = 'profiles';
+    let trainingStatusTimer = null;
+    let testModels = [];
+    const stoppingTrainingRuns = new Set();
+    let wakewordTestRecorder = null;
+    let wakewordTestStream = null;
+    let wakewordTestChunks = [];
+    let wakewordTestLive = false;
+    let wakewordTestLiveTimer = null;
+    let wakewordTestBusy = false;
+    let wakewordTestScores = [];
+    let wakewordAudioContext = null;
+    let wakewordAudioSource = null;
+    let wakewordAudioProcessor = null;
+    let wakewordAudioMute = null;
+    let wakewordPcmQueue = [];
+    let wakewordStreamReset = false;
+    let wakewordStreamInFlight = false;
+    let wakewordStreamAbortController = null;
     const audioDevices = { input: document.querySelector('#input-device'), output: document.querySelector('#output-device') };
 
     function updateSpeechControls() {
@@ -415,7 +473,10 @@
       history.replaceState(null, '', `#${view}`);
       if (view === 'voices' && !catalogVoices.length) loadCatalog().catch(showCatalogError);
       if (view === 'wakeword') loadWakewordData().catch(showWakewordError);
-      if (view === 'settings') enumerateDevices(false).catch(error => { document.querySelector('#device-status').textContent = error.message; });
+      if (view === 'settings') {
+        enumerateDevices(false).catch(error => { document.querySelector('#device-status').textContent = error.message; });
+        loadWakewordWorkspaceSetting().catch(error => { document.querySelector('#wakeword-workspace-status').textContent = error.message; });
+      }
     }
     document.querySelectorAll('.nav button').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
     document.querySelector('.brand').addEventListener('click', event => { event.preventDefault(); switchView('studio'); });
@@ -562,6 +623,7 @@
       if (!wakewordState.profiles.some(item => item.id === selectedProfileId)) selectedProfileId = wakewordState.profiles[0]?.id || '';
       renderWakewordLists();
       if (activeWakewordTab === 'profiles') renderProfileDetail();
+      else if (activeWakewordTab === 'test') await renderWakewordTestView();
       else if (selectedWakewordId) await renderWakewordDetail();
       else document.querySelector('#wakeword-detail').innerHTML = '<div class="empty">Lege ein Wakeword an oder wähle ein bestehendes Projekt.</div>';
     }
@@ -569,16 +631,22 @@
     function renderWakewordLists() {
       const wakewordList = document.querySelector('#wakeword-list');
       document.querySelector('#wakeword-count').textContent = String(wakewordState.wakewords.length).padStart(2, '0');
-      wakewordList.classList.toggle('hidden', activeWakewordTab !== 'wakewords');
+      wakewordList.classList.toggle('hidden', !['wakewords', 'training'].includes(activeWakewordTab));
       const profileList = document.querySelector('#profile-list');
       profileList.classList.toggle('hidden', activeWakewordTab !== 'profiles');
-      document.querySelector('#wakeword-panel .section-head h2').textContent = activeWakewordTab === 'profiles' ? 'Trainingsprofile' : 'Wakewords';
+      document.querySelector('#wakeword-panel').classList.toggle('hidden', activeWakewordTab === 'test');
+      document.querySelector('.wakeword-toolbar').classList.toggle('hidden', activeWakewordTab === 'test');
+      document.querySelector('.wakeword-layout').classList.toggle('testing', activeWakewordTab === 'test');
+      document.querySelector('#wakeword-panel .section-head h2').textContent = activeWakewordTab === 'profiles' ? 'Trainingsprofile' : activeWakewordTab === 'training' ? 'Wakeword auswählen' : 'Wakewords';
       document.querySelector('#wakeword-panel .section-head .micro').textContent = String(activeWakewordTab === 'profiles' ? wakewordState.profiles.length : wakewordState.wakewords.length).padStart(2, '0');
       document.querySelector('#wakewords-tab').setAttribute('aria-selected', String(activeWakewordTab === 'wakewords'));
       document.querySelector('#profiles-tab').setAttribute('aria-selected', String(activeWakewordTab === 'profiles'));
-      document.querySelector('#wakeword-panel').setAttribute('aria-labelledby', activeWakewordTab === 'profiles' ? 'profiles-tab' : 'wakewords-tab');
+      document.querySelector('#training-tab').setAttribute('aria-selected', String(activeWakewordTab === 'training'));
+      document.querySelector('#test-tab').setAttribute('aria-selected', String(activeWakewordTab === 'test'));
+      document.querySelector('#wakeword-panel').setAttribute('aria-labelledby', activeWakewordTab === 'profiles' ? 'profiles-tab' : activeWakewordTab === 'training' ? 'training-tab' : 'wakewords-tab');
       document.querySelector('#new-wakeword').classList.toggle('hidden', activeWakewordTab !== 'wakewords');
       document.querySelector('#new-profile').classList.toggle('hidden', activeWakewordTab !== 'profiles');
+      document.querySelector('#new-wakeword').classList.toggle('hidden', activeWakewordTab !== 'wakewords');
       if (!wakewordState.wakewords.length) wakewordList.innerHTML = '<div class="empty">Noch keine Wakewords angelegt.</div>';
       else wakewordList.replaceChildren(...wakewordState.wakewords.map(project => {
         const button = document.createElement('button');
@@ -639,27 +707,445 @@
     }
 
     async function switchWakewordTab(tab) {
+      if (activeWakewordTab === 'test' && tab !== 'test') stopLiveWakewordTest();
       activeWakewordTab = tab;
       renderWakewordLists();
       if (tab === 'profiles') renderProfileDetail();
+      else if (tab === 'test') await renderWakewordTestView();
       else if (selectedWakewordId) await renderWakewordDetail();
-      else document.querySelector('#wakeword-detail').innerHTML = '<div class="empty">Lege ein Wakeword an oder wähle ein bestehendes Projekt.</div>';
+      else document.querySelector('#wakeword-detail').innerHTML = tab === 'training'
+        ? '<div class="empty">Wähle links ein Wakeword, um dessen Trainingslauf vorzubereiten.</div>'
+        : '<div class="empty">Lege ein Wakeword an oder wähle ein bestehendes Projekt.</div>';
     }
     document.querySelector('#wakewords-tab').addEventListener('click', () => switchWakewordTab('wakewords').catch(showWakewordError));
     document.querySelector('#profiles-tab').addEventListener('click', () => switchWakewordTab('profiles').catch(showWakewordError));
+    document.querySelector('#training-tab').addEventListener('click', () => switchWakewordTab('training').catch(showWakewordError));
+    document.querySelector('#test-tab').addEventListener('click', () => switchWakewordTab('test').catch(showWakewordError));
+
+    async function renderWakewordTestView() {
+      stopLiveWakewordTest();
+      const detail = document.querySelector('#wakeword-detail');
+      detail.replaceChildren();
+      const response = await fetch('/api/wakeword/test/models');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Fertige Wakeword-Modelle konnten nicht geladen werden.');
+      testModels = data.models || [];
+
+      const section = document.createElement('section');
+      section.className = 'ww-section';
+      section.innerHTML = `<div class="section-head"><h2>Fertige Wakewords testen</h2><span class="micro">lokal · ohne Flash</span></div>
+        <p class="training-job-status" id="wakeword-test-env"></p>
+        <div class="wakeword-test-grid">
+          <div>
+            <div class="wakeword-form">
+              <div class="wide"><label class="label" for="wakeword-test-model">Fertiges Modell</label><select id="wakeword-test-model"></select></div>
+              <div class="wide"><label class="label" for="wakeword-test-cutoff">Erkennungsschwellwert <span id="wakeword-test-cutoff-value">50 %</span></label><input id="wakeword-test-cutoff" type="range" min="1" max="99" step="1" value="50"></div>
+            </div>
+            <div class="wakeword-test-panel">
+              <div class="section-head"><h2>Mikrofonaufnahme</h2><span class="micro">ein Clip</span></div>
+              <div class="actions"><button class="button primary" id="wakeword-test-record" type="button" disabled>Aufnahme starten</button><button class="button quiet" id="wakeword-test-record-stop" type="button" disabled>Stopp</button><button class="button quiet" id="wakeword-test-record-score" type="button" disabled>Auswerten</button></div>
+              <audio id="wakeword-test-player" class="hidden" controls></audio>
+              <p class="training-job-status" id="wakeword-test-record-status" role="status" aria-live="polite">Mikrofon öffnet erst nach Klick.</p>
+            </div>
+            <div class="wakeword-test-panel">
+              <div class="section-head"><h2>Audiodatei</h2><span class="micro">WAV, WebM, OGG, MP3</span></div>
+              <div class="wakeword-form"><div class="wide"><label class="label" for="wakeword-test-file">Datei auswählen</label><input id="wakeword-test-file" type="file" accept="audio/*,.wav,.webm,.ogg,.mp3,.m4a"></div></div>
+              <button class="button quiet" id="wakeword-test-file-score" type="button" disabled>Datei auswerten</button>
+              <p class="training-job-status" id="wakeword-test-file-status" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+          <div>
+            <div class="wakeword-test-panel">
+              <div class="section-head"><h2>Live-Mikrofon</h2><span class="micro">nicht gespeichert</span></div>
+              <div class="live-test-controls">
+                <div><label class="label" for="wakeword-test-interval">Score-Update</label><select id="wakeword-test-interval"><option value="100">0,1 s</option><option value="200" selected>0,2 s</option><option value="500">0,5 s</option><option value="1000">1 s</option></select></div>
+                <button class="button primary" id="wakeword-test-live" type="button" disabled>Live starten</button>
+              </div>
+              <p class="test-live-status" id="wakeword-test-live-status" role="status" aria-live="polite">Mikrofon öffnet erst nach Klick. Der Stream läuft ohne Aufnahme-Neustarts; PCM wird kontinuierlich zum lokalen Modell übertragen.</p>
+              <canvas class="live-score-chart" id="wakeword-test-chart" aria-label="Wakeword-Score im Zeitverlauf mit Schwellwertlinie"></canvas>
+              <div class="live-chart-legend"><span class="live-chart-key">Modellscore</span><span class="live-chart-key cutoff" id="wakeword-test-cutoff-legend">Schwellwert</span></div>
+              <div class="live-chart-summary" id="wakeword-test-chart-summary"><span>Letzter Wert: noch keiner</span><span>Peak: noch keiner</span></div>
+            </div>
+          </div>
+        </div>`;
+      detail.append(section);
+      const modelSelect = section.querySelector('#wakeword-test-model');
+      if (testModels.length) {
+        modelSelect.replaceChildren(...testModels.map(model => new Option(`${model.label} · ${model.source}/${model.filename}`, model.id)));
+        section.querySelector('#wakeword-test-env').textContent = data.ready ? `${testModels.length} fertige Modelle verfügbar.` : data.message;
+      } else {
+        modelSelect.add(new Option('Keine fertigen Modelle verfügbar', ''));
+        section.querySelector('#wakeword-test-env').textContent = data.ready ? 'Noch keine fertigen TFLite-Modelle vorhanden.' : data.message;
+      }
+      const cutoffInput = section.querySelector('#wakeword-test-cutoff');
+      const cutoffText = section.querySelector('#wakeword-test-cutoff-value');
+      const recordButton = section.querySelector('#wakeword-test-record');
+      const stopButton = section.querySelector('#wakeword-test-record-stop');
+      const recordScoreButton = section.querySelector('#wakeword-test-record-score');
+      const fileInput = section.querySelector('#wakeword-test-file');
+      const fileScoreButton = section.querySelector('#wakeword-test-file-score');
+      const liveButton = section.querySelector('#wakeword-test-live');
+      const testReady = testModels.length > 0;
+      const drawLiveScoreChart = () => renderLiveScoreChart(section.querySelector('#wakeword-test-chart'), wakewordTestScores, Number(cutoffInput.value) / 100);
+      const setSuggestedCutoff = () => {
+        const model = testModels.find(item => item.id === modelSelect.value);
+        if (model) cutoffInput.value = String(Math.max(1, Math.min(99, Math.round(model.cutoff * 100))));
+        cutoffText.textContent = `${cutoffInput.value} %`;
+        section.querySelector('#wakeword-test-cutoff-legend').textContent = `Schwellwert ${cutoffInput.value} %`;
+        drawLiveScoreChart();
+      };
+      const updateButtons = () => {
+        recordButton.disabled = !testReady || Boolean(wakewordTestRecorder) || wakewordTestLive;
+        stopButton.disabled = !wakewordTestRecorder || wakewordTestRecorder.state === 'inactive';
+        recordScoreButton.disabled = !section.querySelector('#wakeword-test-player').src || wakewordTestBusy;
+        fileScoreButton.disabled = !fileInput.files.length || wakewordTestBusy;
+        liveButton.disabled = !testReady || Boolean(wakewordTestRecorder) || wakewordTestBusy;
+        liveButton.textContent = wakewordTestLive ? 'Live stoppen' : 'Live starten';
+      };
+      modelSelect.addEventListener('change', setSuggestedCutoff);
+      cutoffInput.addEventListener('input', () => {
+        cutoffText.textContent = `${cutoffInput.value} %`;
+        section.querySelector('#wakeword-test-cutoff-legend').textContent = `Schwellwert ${cutoffInput.value} %`;
+        drawLiveScoreChart();
+      });
+      fileInput.addEventListener('change', () => {
+        section.querySelector('#wakeword-test-file-status').textContent = fileInput.files[0]?.name || '';
+        updateButtons();
+      });
+      recordButton.addEventListener('click', async () => {
+        try {
+          wakewordTestStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          wakewordTestChunks = [];
+          wakewordTestRecorder = new MediaRecorder(wakewordTestStream);
+          wakewordTestRecorder.addEventListener('dataavailable', event => { if (event.data.size) wakewordTestChunks.push(event.data); });
+          wakewordTestRecorder.addEventListener('stop', () => {
+            const blob = new Blob(wakewordTestChunks, { type: wakewordTestRecorder?.mimeType || 'audio/webm' });
+            section.querySelector('#wakeword-test-player').src = URL.createObjectURL(blob);
+            section.querySelector('#wakeword-test-record-status').textContent = `Aufnahme bereit · ${(blob.size / 1024).toFixed(0)} KB`;
+            wakewordTestStream?.getTracks().forEach(track => track.stop());
+            wakewordTestStream = null;
+            wakewordTestRecorder = null;
+            updateButtons();
+          }, { once: true });
+          wakewordTestRecorder.start();
+          section.querySelector('#wakeword-test-record-status').textContent = 'Aufnahme läuft …';
+          updateButtons();
+        } catch (error) { section.querySelector('#wakeword-test-record-status').textContent = `Mikrofon nicht verfügbar: ${error.message}`; }
+      });
+      stopButton.addEventListener('click', () => wakewordTestRecorder?.stop());
+      recordScoreButton.addEventListener('click', async () => {
+        const player = section.querySelector('#wakeword-test-player');
+        const response = await fetch(player.src);
+        await submitWakewordTest(await response.blob(), modelSelect.value, Number(cutoffInput.value) / 100, section);
+      });
+      fileScoreButton.addEventListener('click', () => submitWakewordTest(fileInput.files[0], modelSelect.value, Number(cutoffInput.value) / 100, section));
+      liveButton.addEventListener('click', () => wakewordTestLive ? stopLiveWakewordTest(section) : startLiveWakewordTest(section, modelSelect, cutoffInput));
+      setSuggestedCutoff();
+      drawLiveScoreChart();
+      updateButtons();
+    }
+
+    async function submitWakewordTest(blob, modelId, cutoff, section, live = false, resetWorker = false) {
+      if (!blob || !modelId || wakewordTestBusy) return;
+      wakewordTestBusy = true;
+      const liveStatus = section.querySelector('#wakeword-test-live-status');
+      liveStatus.setAttribute('aria-busy', 'true');
+      liveStatus.textContent = 'Audio wird ausgewertet …';
+      try {
+        const params = new URLSearchParams({ model: modelId, cutoff: String(cutoff), live: live ? '1' : '0', reset: resetWorker ? '1' : '0' });
+        const response = await fetch(`/api/wakeword/test/score?${params}`, {
+          method: 'POST',
+          headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+          body: blob
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Wakeword-Test fehlgeschlagen.');
+        wakewordTestScores.push({ score: result.score, timestamp: Date.now() });
+        wakewordTestScores = wakewordTestScores.slice(-60);
+        renderLiveScoreChart(section.querySelector('#wakeword-test-chart'), wakewordTestScores, cutoff);
+        const recentScores = wakewordTestScores.filter(point => point.timestamp >= Date.now() - 20000);
+        const summary = section.querySelector('#wakeword-test-chart-summary');
+        summary.children[0].textContent = `Letzter Wert: ${(result.score * 100).toFixed(1)} %`;
+        summary.children[1].textContent = `Peak (20 s): ${(Math.max(...recentScores.map(point => point.score)) * 100).toFixed(1)} %`;
+        liveStatus.textContent = `${result.model_label} · ${result.detected ? 'Schwellwert erreicht' : 'unter Schwellwert'}${live ? ' · Live-Clip, nicht gespeichert' : ' · Einzeltest'}`;
+      } catch (error) {
+        liveStatus.textContent = error.message;
+        if (wakewordTestLive) stopLiveWakewordTest(section);
+      } finally {
+        wakewordTestBusy = false;
+        liveStatus.setAttribute('aria-busy', 'false');
+        section.querySelector('#wakeword-test-file-score').disabled = !section.querySelector('#wakeword-test-file').files.length;
+        section.querySelector('#wakeword-test-record-score').disabled = !section.querySelector('#wakeword-test-player').src;
+      }
+    }
+
+    function renderLiveScoreChart(canvas, scores, cutoff) {
+      if (!canvas) return;
+      const bounds = canvas.getBoundingClientRect();
+      const pixelRatio = window.devicePixelRatio || 1;
+      const width = Math.max(1, bounds.width);
+      const height = Math.max(1, bounds.height);
+      canvas.width = Math.round(width * pixelRatio);
+      canvas.height = Math.round(height * pixelRatio);
+      const context = canvas.getContext('2d');
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      context.clearRect(0, 0, width, height);
+      const plot = { left: 42, right: width - 12, top: 12, bottom: height - 35 };
+      const plotWidth = Math.max(1, plot.right - plot.left);
+      const plotHeight = Math.max(1, plot.bottom - plot.top);
+      const windowMs = 20000;
+      const lastTimestamp = scores.at(-1)?.timestamp || Date.now();
+      const firstTimestamp = lastTimestamp - windowMs;
+      const visibleScores = scores.filter(point => point.timestamp >= firstTimestamp);
+      const sortedValues = visibleScores.map(point => Math.max(0, Math.min(1, point.score))).sort((left, right) => left - right);
+      const recentCeiling = sortedValues.length
+        ? sortedValues[Math.min(sortedValues.length - 1, Math.floor((sortedValues.length - 1) * 0.85))]
+        : 0;
+      const rawYMax = Math.max(0.15, cutoff * 1.5, recentCeiling * 1.15);
+      const yMax = Math.min(1, Math.ceil(rawYMax * 20) / 20);
+      const scoreY = score => plot.bottom - Math.pow(Math.max(0, Math.min(yMax, score)) / yMax, 0.3) * plotHeight;
+      context.font = '10px sans-serif';
+      context.textBaseline = 'middle';
+      for (const position of [0, 0.25, 0.5, 0.75, 1]) {
+        const value = yMax * Math.pow(position, 1 / 0.3);
+        const y = plot.bottom - position * plotHeight;
+        context.strokeStyle = '#39464b';
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(plot.left, y);
+        context.lineTo(plot.right, y);
+        context.stroke();
+        context.fillStyle = '#aab7bb';
+        context.textAlign = 'right';
+        context.fillText(value.toFixed(2), plot.left - 8, y);
+      }
+      for (const secondsAgo of [20, 15, 10, 5, 0]) {
+        const x = plot.left + ((20 - secondsAgo) / 20) * plotWidth;
+        context.strokeStyle = '#28363a';
+        context.beginPath();
+        context.moveTo(x, plot.top);
+        context.lineTo(x, plot.bottom);
+        context.stroke();
+        context.fillStyle = '#aab7bb';
+        context.textAlign = secondsAgo === 0 ? 'right' : secondsAgo === 20 ? 'left' : 'center';
+        context.textBaseline = 'top';
+        context.fillText(secondsAgo === 0 ? 'jetzt' : `-${secondsAgo}s`, x, plot.bottom + 8);
+      }
+      context.strokeStyle = '#df8d51';
+      context.setLineDash([5, 4]);
+      const cutoffY = scoreY(cutoff);
+      context.beginPath();
+      context.moveTo(plot.left, cutoffY);
+      context.lineTo(plot.right, cutoffY);
+      context.stroke();
+      context.setLineDash([]);
+      if (!visibleScores.length) {
+        context.fillStyle = '#aab7bb';
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.fillText('Scores erscheinen hier nach dem Test', plot.left + plotWidth / 2, plot.top + plotHeight / 2);
+        return;
+      }
+      context.strokeStyle = '#c5e86c';
+      context.lineWidth = 2;
+      context.beginPath();
+      visibleScores.forEach((point, index) => {
+        const x = plot.left + Math.max(0, Math.min(1, (point.timestamp - firstTimestamp) / windowMs)) * plotWidth;
+        const y = scoreY(point.score);
+        if (index === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      });
+      context.stroke();
+      for (const point of visibleScores) {
+        const x = plot.left + Math.max(0, Math.min(1, (point.timestamp - firstTimestamp) / windowMs)) * plotWidth;
+        const y = scoreY(point.score);
+        context.fillStyle = point.score >= cutoff ? '#c5e86c' : '#f1f4ed';
+        context.beginPath();
+        context.arc(x, y, 3.5, 0, Math.PI * 2);
+        context.fill();
+        if (point.score > yMax) {
+          context.fillStyle = '#c5e86c';
+          context.beginPath();
+          context.moveTo(x, plot.top - 1);
+          context.lineTo(x - 4, plot.top + 6);
+          context.lineTo(x + 4, plot.top + 6);
+          context.closePath();
+          context.fill();
+        }
+      }
+    }
+
+    async function startLiveWakewordTest(section, modelSelect, cutoffInput) {
+      if (!navigator.mediaDevices?.getUserMedia || !window.AudioContext) {
+        section.querySelector('#wakeword-test-live-status').textContent = 'Dieser Browser unterstützt keine Mikrofonaufnahme.';
+        return;
+      }
+      try {
+        wakewordTestStream = await navigator.mediaDevices.getUserMedia({
+          audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        });
+        wakewordAudioContext = new AudioContext();
+        await wakewordAudioContext.resume();
+        wakewordAudioSource = wakewordAudioContext.createMediaStreamSource(wakewordTestStream);
+        wakewordAudioProcessor = wakewordAudioContext.createScriptProcessor(2048, 1, 1);
+        wakewordAudioMute = wakewordAudioContext.createGain();
+        wakewordAudioMute.gain.value = 0;
+        wakewordPcmQueue = [];
+        wakewordStreamReset = true;
+        wakewordTestLive = true;
+        modelSelect.disabled = true;
+        cutoffInput.disabled = true;
+        section.querySelector('#wakeword-test-interval').disabled = true;
+        section.querySelector('#wakeword-test-live-status').textContent = `Kontinuierlicher Audiostream aktiv · ${wakewordAudioContext.sampleRate} → 16000 Hz`;
+        wakewordAudioProcessor.onaudioprocess = event => {
+          if (!wakewordTestLive) return;
+          const mono = event.inputBuffer.getChannelData(0);
+          const pcmFrame = floatAudioToPcm16(mono, wakewordAudioContext.sampleRate, 16000);
+          if (!pcmFrame.length) return;
+          wakewordPcmQueue.push(pcmFrame);
+          if (!wakewordTestLiveTimer && !wakewordStreamInFlight) {
+            const delay = Number(section.querySelector('#wakeword-test-interval').value);
+            wakewordTestLiveTimer = setTimeout(() => {
+              wakewordTestLiveTimer = null;
+              flushWakewordPcm(section, modelSelect.value, Number(cutoffInput.value) / 100);
+            }, delay);
+          }
+        };
+        wakewordAudioSource.connect(wakewordAudioProcessor);
+        wakewordAudioProcessor.connect(wakewordAudioMute);
+        wakewordAudioMute.connect(wakewordAudioContext.destination);
+      } catch (error) {
+        section.querySelector('#wakeword-test-live-status').textContent = `Mikrofon nicht verfügbar: ${error.message}`;
+        stopLiveWakewordTest(section);
+      }
+      section.querySelector('#wakeword-test-live').textContent = wakewordTestLive ? 'Live stoppen' : 'Live starten';
+    }
+
+    function stopLiveWakewordTest(section = document.querySelector('#wakeword-detail')) {
+      wakewordTestLive = false;
+      clearTimeout(wakewordTestLiveTimer);
+      wakewordTestLiveTimer = null;
+      wakewordStreamAbortController?.abort();
+      wakewordStreamAbortController = null;
+      wakewordPcmQueue = [];
+      if (wakewordAudioProcessor) wakewordAudioProcessor.onaudioprocess = null;
+      wakewordAudioSource?.disconnect();
+      wakewordAudioProcessor?.disconnect();
+      wakewordAudioMute?.disconnect();
+      wakewordTestStream?.getTracks().forEach(track => track.stop());
+      wakewordTestStream = null;
+      wakewordAudioSource = null;
+      wakewordAudioProcessor = null;
+      wakewordAudioMute = null;
+      if (wakewordAudioContext && wakewordAudioContext.state !== 'closed') wakewordAudioContext.close().catch(() => {});
+      wakewordAudioContext = null;
+      const liveButton = section?.querySelector('#wakeword-test-live');
+      if (liveButton) liveButton.textContent = 'Live starten';
+      const modelSelect = section?.querySelector('#wakeword-test-model');
+      const cutoffInput = section?.querySelector('#wakeword-test-cutoff');
+      const intervalSelect = section?.querySelector('#wakeword-test-interval');
+      if (modelSelect) modelSelect.disabled = testModels.length === 0;
+      if (cutoffInput) cutoffInput.disabled = testModels.length === 0;
+      if (intervalSelect) intervalSelect.disabled = false;
+      const status = section?.querySelector('#wakeword-test-live-status');
+      if (status) status.textContent = 'Live-Mikrofon geschlossen. Live-Clips werden nicht gespeichert.';
+    }
+
+    function floatAudioToPcm16(input, sampleRate, targetRate) {
+      const outputLength = Math.floor(input.length * targetRate / sampleRate);
+      const output = new Int16Array(outputLength);
+      for (let index = 0; index < outputLength; index += 1) {
+        const sourcePosition = index * sampleRate / targetRate;
+        const sourceIndex = Math.floor(sourcePosition);
+        const fraction = sourcePosition - sourceIndex;
+        const first = input[sourceIndex] || 0;
+        const second = input[Math.min(sourceIndex + 1, input.length - 1)] || 0;
+        const value = first + (second - first) * fraction;
+        output[index] = Math.max(-32768, Math.min(32767, Math.round(value * 32767)));
+      }
+      return new Uint8Array(output.buffer);
+    }
+
+    async function flushWakewordPcm(section, modelId, cutoff) {
+      if (!wakewordTestLive || wakewordStreamInFlight || !wakewordPcmQueue.length) return;
+      wakewordStreamInFlight = true;
+      const frames = wakewordPcmQueue;
+      wakewordPcmQueue = [];
+      const byteLength = frames.reduce((total, frame) => total + frame.length, 0);
+      const pcm = new Uint8Array(byteLength);
+      let offset = 0;
+      for (const frame of frames) {
+        pcm.set(frame, offset);
+        offset += frame.length;
+      }
+      const liveStatus = section.querySelector('#wakeword-test-live-status');
+      liveStatus.setAttribute('aria-busy', 'true');
+      try {
+        const params = new URLSearchParams({
+          model: modelId,
+          cutoff: String(cutoff),
+          reset: wakewordStreamReset ? '1' : '0'
+        });
+        wakewordStreamAbortController = new AbortController();
+        const response = await fetch(`/api/wakeword/test/stream?${params}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: pcm,
+          signal: wakewordStreamAbortController.signal
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'PCM-Stream konnte nicht ausgewertet werden.');
+        wakewordStreamReset = false;
+        const now = Date.now();
+        wakewordTestScores.push({ score: result.score, timestamp: now });
+        wakewordTestScores = wakewordTestScores.slice(-160);
+        renderLiveScoreChart(section.querySelector('#wakeword-test-chart'), wakewordTestScores, cutoff);
+        const recentScores = wakewordTestScores.filter(point => point.timestamp >= now - 20000);
+        const summary = section.querySelector('#wakeword-test-chart-summary');
+        summary.children[0].textContent = `Letzter Wert: ${(result.score * 100).toFixed(1)} %`;
+        summary.children[1].textContent = `Peak (20 s): ${(Math.max(...recentScores.map(point => point.score)) * 100).toFixed(1)} %`;
+        const recognitionState = !result.detection_ready
+          ? 'ESP-Warm-up (1 s)'
+          : result.detected ? 'Schwellwert erreicht' : 'unter Schwellwert';
+        liveStatus.textContent = `${result.model_label} · ${recognitionState} · kontinuierlicher PCM-Stream`;
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          liveStatus.textContent = error.message;
+          stopLiveWakewordTest(section);
+        }
+      } finally {
+        wakewordStreamAbortController = null;
+        wakewordStreamInFlight = false;
+        liveStatus.setAttribute('aria-busy', 'false');
+        if (wakewordTestLive && wakewordPcmQueue.length && !wakewordTestLiveTimer) {
+          const delay = Number(section.querySelector('#wakeword-test-interval').value);
+          wakewordTestLiveTimer = setTimeout(() => {
+            wakewordTestLiveTimer = null;
+            flushWakewordPcm(section, modelId, cutoff);
+          }, delay);
+        }
+      }
+    }
 
     async function renderWakewordDetail() {
       const project = wakewordState.wakewords.find(item => item.id === selectedWakewordId);
       if (!project) return;
-      const [samplesResponse, runsResponse, voicesResponse] = await Promise.all([
+      const [samplesResponse, runsResponse, voicesResponse, trainingOptionsResponse] = await Promise.all([
         fetch(`/api/wakeword/samples/${encodeURIComponent(project.id)}`),
         fetch(`/api/wakeword/runs/${encodeURIComponent(project.id)}`),
-        fetch('/api/voices')
+        fetch('/api/voices'),
+        fetch('/api/wakeword/training/options')
       ]);
-      const [samplesData, runsData, voicesData] = await Promise.all([samplesResponse.json(), runsResponse.json(), voicesResponse.json()]);
-      if (!samplesResponse.ok || !runsResponse.ok || !voicesResponse.ok) throw new Error(samplesData.error || runsData.error || voicesData.error || 'Projekt konnte nicht geladen werden.');
+      const [samplesData, runsData, voicesData, trainingOptions] = await Promise.all([samplesResponse.json(), runsResponse.json(), voicesResponse.json(), trainingOptionsResponse.json()]);
+      if (!samplesResponse.ok || !runsResponse.ok || !voicesResponse.ok || !trainingOptionsResponse.ok) throw new Error(samplesData.error || runsData.error || voicesData.error || trainingOptions.error || 'Projekt konnte nicht geladen werden.');
       const detail = document.querySelector('#wakeword-detail');
       detail.replaceChildren();
+      const projectPane = document.createElement('div');
+      const trainingPane = document.createElement('section');
+      trainingPane.className = 'ww-section';
+      projectPane.className = activeWakewordTab === 'wakewords' ? '' : 'hidden';
+      trainingPane.classList.toggle('hidden', activeWakewordTab !== 'training');
+      detail.append(projectPane, trainingPane);
       const form = document.createElement('form');
       form.className = 'wakeword-form';
       form.innerHTML = `<div><label class="label">Projektname</label><input name="name" maxlength="100" required value="${escapeAttribute(project.name)}"></div>
@@ -683,7 +1169,7 @@
         try { await wakewordRequest('/api/wakeword/delete', { id: project.id }); selectedWakewordId = ''; await loadWakewordData(); }
         catch (error) { alert(error.message); }
       });
-      detail.append(form);
+      projectPane.append(form);
 
       const sampleSection = document.createElement('section');
       sampleSection.className = 'ww-section';
@@ -913,7 +1399,7 @@
         sampleSection.querySelector(`[data-sample-count="${kind}"]`).textContent = `${sampleCounts[kind]} Samples`;
         if (!sampleCounts[kind]) sampleRows[kind].innerHTML = '<div class="sample-empty">Noch keine Samples dieser Art.</div>';
       }
-      detail.append(sampleSection);
+      projectPane.append(sampleSection);
 
       const runSection = document.createElement('section');
       runSection.className = 'ww-section';
@@ -984,7 +1470,138 @@
         row.append(content, actions);
         runRows.append(row);
       }
-      detail.append(runSection);
+      projectPane.append(runSection);
+
+      const trainingHead = document.createElement('div');
+      trainingHead.className = 'section-head';
+      trainingHead.innerHTML = '<h2>microWakeWord-Training</h2><span class="micro">Frischer, isolierter Modelllauf</span>';
+      const environmentStatus = document.createElement('p');
+      environmentStatus.className = 'training-job-status';
+      const latestTrainingRun = runsData.runs.find(run => run.training);
+      const environmentMessage = trainingOptions.ready
+        ? 'Trainingsumgebung bereit. Das Modell wird ausschließlich im Run-Ordner erzeugt.'
+        : trainingOptions.message || 'Trainingsumgebung nicht verfügbar.';
+      environmentStatus.textContent = latestTrainingRun
+        ? `${latestTrainingRun.status}${latestTrainingRun.training.stage ? ` · ${latestTrainingRun.training.stage}` : ''}${latestTrainingRun.training.error ? ` · ${latestTrainingRun.training.error}` : ''}`
+        : environmentMessage;
+      environmentStatus.setAttribute('role', 'status');
+      environmentStatus.setAttribute('aria-live', 'polite');
+      const trainingProgress = document.createElement('progress');
+      trainingProgress.className = 'training-progress';
+      trainingProgress.max = 100;
+      trainingProgress.value = latestTrainingRun?.training?.progress || 0;
+      trainingProgress.setAttribute('aria-label', 'Trainingsfortschritt');
+      const trainingProgressLabel = document.createElement('div');
+      trainingProgressLabel.className = 'micro';
+      trainingProgressLabel.textContent = latestTrainingRun?.training?.progress != null
+        ? `${latestTrainingRun.training.progress} %`
+        : 'Noch nicht gestartet';
+      const trainingForm = document.createElement('form');
+      trainingForm.className = 'wakeword-form';
+      trainingForm.innerHTML = `<div><label class="label" for="training-steps">Trainingsschritte</label><input id="training-steps" name="training_steps" type="number" min="1000" max="50000" step="1000" value="10000" required><small class="parameter-help">Wie oft das Modell die Trainingsbeispiele durchläuft. Mehr Schritte dauern länger.</small></div>
+        <div><label class="label" for="training-batch-size">Batchgröße</label><input id="training-batch-size" name="batch_size" type="number" min="16" max="512" step="16" value="128" required><small class="parameter-help">Beispiele pro Lernschritt. Größere Batches brauchen mehr Arbeitsspeicher.</small></div>
+        <div><label class="label" for="training-learning-rate">Lernrate</label><input id="training-learning-rate" name="learning_rate" type="number" min="0.00001" max="0.01" step="0.0001" value="0.001" required><small class="parameter-help">Größe der Gewichtsänderung je Schritt; zu hoch kann das Lernen instabil machen.</small></div>
+        <div><label class="label" for="training-negative-weight">Negativgewicht</label><input id="training-negative-weight" name="negative_class_weight" type="number" min="1" max="50" step="1" value="15" required><small class="parameter-help">Gewichtung falscher Auslösungen im Verhältnis zu verpassten Wakewords.</small></div>
+        <div class="wide"><label class="label" for="training-snapshot">Datensatz-Snapshot</label><select id="training-snapshot" name="run_id" required><option value="">Snapshot auswählen</option></select></div>
+        <div class="wide"><span class="label">Trainingsbasis · Sampling-Gewicht 0 bis 50</span><small class="parameter-help">Zusätzliche Sprache, Gespräche und Umgebungsgeräusche als Negativbeispiele. Gewicht 0 schließt den Datensatz aus.</small><div id="training-datasets"></div></div>
+        <div class="wide"><span class="label">Fortschritt</span><div id="training-progress-slot"></div></div>
+        <div class="wide actions"><button class="button primary" type="submit">Training starten</button><button class="button quiet danger" id="training-stop" type="button">Training stoppen</button><span class="micro" id="training-selection-summary"></span></div>`;
+      const progressSlot = trainingForm.querySelector('#training-progress-slot');
+      progressSlot.append(trainingProgress, trainingProgressLabel);
+      const snapshotSelect = trainingForm.querySelector('#training-snapshot');
+      const activeRun = runsData.runs.find(run => ['queued', 'running'].includes(run.status));
+      const stopButton = trainingForm.querySelector('#training-stop');
+      stopButton.classList.toggle('hidden', !activeRun);
+      if (!activeRun) for (const runId of stoppingTrainingRuns) stoppingTrainingRuns.delete(runId);
+      stopButton.disabled = !activeRun || stoppingTrainingRuns.has(activeRun.id);
+      stopButton.addEventListener('click', async () => {
+        if (!activeRun || !confirm('Laufendes Wakeword-Training abbrechen? Der Lauf wird als gestoppt markiert.')) return;
+        stopButton.disabled = true;
+        stoppingTrainingRuns.add(activeRun.id);
+        environmentStatus.textContent = 'Abbruch wird angefordert …';
+        try {
+          await wakewordRequest('/api/wakeword/training/stop', { run_id: activeRun.id });
+          environmentStatus.textContent = 'Abbruch angefordert; der Unterprozess wird beendet …';
+        } catch (error) {
+          stoppingTrainingRuns.delete(activeRun.id);
+          environmentStatus.textContent = error.message;
+          stopButton.disabled = false;
+        }
+      });
+      for (const run of runsData.runs.filter(item => item.status === 'prepared' && !item.training)) {
+        const option = document.createElement('option');
+        option.value = run.id;
+        option.textContent = `${run.id} · ${run.samples.length} Samples`;
+        snapshotSelect.append(option);
+      }
+      const datasetInputs = trainingForm.querySelector('#training-datasets');
+      for (const dataset of trainingOptions.datasets || []) {
+        const row = document.createElement('div');
+        row.className = 'training-dataset';
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = dataset.available;
+        checkbox.disabled = !dataset.available || dataset.required;
+        checkbox.dataset.datasetEnabled = dataset.id;
+        const name = document.createElement('span');
+        name.textContent = `${dataset.label}${dataset.required ? ' · erforderlich, nur Auswertung' : ''}${dataset.available ? '' : ' · nicht installiert'}`;
+        label.append(checkbox, name);
+        const weight = document.createElement('input');
+        weight.type = 'number';
+        weight.min = '0';
+        weight.max = '50';
+        weight.step = '0.5';
+        weight.value = String(dataset.default_weight);
+        weight.disabled = !dataset.available || dataset.required;
+        weight.dataset.datasetWeight = dataset.id;
+        weight.setAttribute('aria-label', `Sampling-Gewicht ${dataset.label}`);
+        row.append(label, weight);
+        datasetInputs.append(row);
+      }
+      const updateTrainingSelection = () => {
+        const selectedRun = runsData.runs.find(run => run.id === snapshotSelect.value);
+        const positive = selectedRun?.samples.filter(sample => sample.kind === 'positive' && sample.filename.toLowerCase().endsWith('.wav')).length || 0;
+        const negative = selectedRun?.samples.filter(sample => sample.kind === 'negative' && sample.filename.toLowerCase().endsWith('.wav')).length || 0;
+        trainingForm.querySelector('#training-selection-summary').textContent = selectedRun
+          ? `${positive} positive · ${negative} negative WAVs`
+          : 'Snapshot mit mindestens 5 positiven und 5 negativen WAVs auswählen';
+        const trainingActive = runsData.runs.some(run => ['queued', 'running'].includes(run.status));
+        trainingForm.querySelector('button[type="submit"]').disabled = !trainingOptions.ready || !selectedRun || positive < 5 || negative < 5 || trainingActive;
+      };
+      snapshotSelect.addEventListener('change', updateTrainingSelection);
+      trainingForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const button = trainingForm.querySelector('button[type="submit"]');
+        button.disabled = true;
+        environmentStatus.textContent = 'Training wird gestartet …';
+        const dataset_weights = Object.fromEntries([...datasetInputs.querySelectorAll('[data-dataset-weight]')].map(input => [input.dataset.datasetWeight, Number(input.value)]));
+        const enabled = new Set([...datasetInputs.querySelectorAll('[data-dataset-enabled]:checked')].map(input => input.dataset.datasetEnabled));
+        for (const dataset of trainingOptions.datasets || []) if (!enabled.has(dataset.id) && !dataset.required) dataset_weights[dataset.id] = 0;
+        const parameters = Object.fromEntries(new FormData(trainingForm));
+        parameters.training_steps = Number(parameters.training_steps);
+        parameters.batch_size = Number(parameters.batch_size);
+        parameters.learning_rate = Number(parameters.learning_rate);
+        parameters.negative_class_weight = Number(parameters.negative_class_weight);
+        try {
+          await wakewordRequest('/api/wakeword/training/start', {
+            wakeword_id: project.id,
+            run_id: snapshotSelect.value,
+            ...parameters,
+            dataset_weights
+          });
+          await renderWakewordDetail();
+        } catch (error) {
+          environmentStatus.textContent = error.message;
+          updateTrainingSelection();
+        }
+      });
+      trainingPane.append(trainingHead, environmentStatus, trainingForm);
+      updateTrainingSelection();
+      if (latestTrainingRun && ['queued', 'running'].includes(latestTrainingRun.status)) {
+        clearTimeout(trainingStatusTimer);
+        trainingStatusTimer = setTimeout(() => renderWakewordDetail().catch(showWakewordError), 2500);
+      }
     }
 
     function escapeHtml(value) {
@@ -1188,6 +1805,45 @@
       }
       document.querySelector('#device-status').textContent = devices.length ? `${devices.filter(item => item.kind.startsWith('audio')).length} Audiogeräte erkannt.` : 'Keine Audiogeräte erkannt.';
     }
+
+    async function loadWakewordWorkspaceSetting() {
+      const response = await fetch('/api/settings/wakeword-workspace');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Trainingspfad konnte nicht gelesen werden.');
+      const pathInput = document.querySelector('#wakeword-workspace-path');
+      pathInput.value = data.workspace_path || '';
+      pathInput.disabled = data.workspace_locked;
+      document.querySelector('#save-wakeword-workspace').disabled = data.workspace_locked;
+      const sourceLabel = data.workspace_source === 'environment'
+        ? 'VOXWERK_WAKEWORD_DIR überschreibt diesen Pfad.'
+        : data.workspace_source === 'settings'
+          ? 'Gespeicherter Trainingsordner.'
+          : 'Standardordner aus dem VoxWerk-Checkout.';
+      const readiness = data.ready ? ' Trainingsumgebung bereit.' : ` ${data.message || 'Trainingsumgebung unvollständig.'}`;
+      document.querySelector('#wakeword-workspace-status').textContent = `${sourceLabel}${readiness}`;
+    }
+
+    document.querySelector('#save-wakeword-workspace').addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const status = document.querySelector('#wakeword-workspace-status');
+      button.disabled = true;
+      status.textContent = 'Pfad wird geprüft …';
+      try {
+        const response = await fetch('/api/settings/wakeword-workspace', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: document.querySelector('#wakeword-workspace-path').value })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Trainingspfad konnte nicht gespeichert werden.');
+        document.querySelector('#wakeword-workspace-path').value = data.workspace_path;
+        status.textContent = data.ready ? 'Trainingsordner gespeichert. Umgebung bereit.' : `Pfad gespeichert, Umgebung aber unvollständig. ${data.message || ''}`;
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
 
     async function applyOutputDevice() {
       const outputId = storedSettings.output || '';

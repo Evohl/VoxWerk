@@ -102,6 +102,19 @@ class WakewordStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "negatives"):
             self.store.create_run(self.project["id"], {"sample_ids": [positive["id"]]})
 
+    def test_run_status_and_training_parameters_are_persisted(self) -> None:
+        positive = self.store.save_sample(self.project["id"], "positive", "positive.wav", b"positive")
+        negative = self.store.save_sample(self.project["id"], "negative", "negative.wav", b"negative")
+        run = self.store.create_run(self.project["id"], {"sample_ids": [positive["id"], negative["id"]]})
+        updated = self.store.update_run(
+            self.project["id"],
+            run["id"],
+            status="queued",
+            training={"stage": "Wartet auf Start", "parameters": {"training_steps": 10000}},
+        )
+        self.assertEqual(updated["status"], "queued")
+        self.assertEqual(self.store.list_runs(self.project["id"])[0]["training"]["parameters"]["training_steps"], 10000)
+
     def test_deleting_wakeword_removes_only_its_project_data(self) -> None:
         other = self.store.save_wakeword({"name": "Hey Other", "phrase": "Hey Other"})
         self.store.delete_wakeword(self.project["id"])
