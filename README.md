@@ -10,6 +10,7 @@ VoxWerk is a local-first speech studio for browsing Piper voices, downloading on
 - Enter text, adjust speaking rate, preview speech, and save WAV recordings.
 - Select browser audio input and output devices, test the microphone level, and play an output test tone.
 - Choose the microWakeWord training workspace in Settings; the selected workspace is shared by training and finished-model testing.
+- Install the isolated microWakeWord training environment from Settings into a new or empty workspace; its fixed training/evaluation datasets occupy about 25 GB after extraction.
 - Move all VoxWerk-created user data to a separate data directory from Settings; source data is copied and retained as a backup.
 - Create and manage isolated wakeword projects, reusable training profiles, audio samples, explicit dataset snapshots, and local microWakeWord training runs.
 - Test finished wakeword TFLite models with microphone clips, audio files, or a fast live-microphone score; test recordings are not retained.
@@ -106,6 +107,7 @@ Open **Wakewords** to create a training profile and a separate wakeword project.
 - Audio device selections are stored in the current browser's local storage.
 - The selected wakeword workspace is stored in `${XDG_DATA_HOME:-~/.local/share}/voxwerk/wakeword_training.json`; `VOXWERK_WAKEWORD_DIR` takes precedence and locks the Settings field.
 - The VoxWerk data directory defaults to `${XDG_DATA_HOME:-~/.local/share}/voxwerk` and can be moved with **Einstellungen → VoxWerk-Nutzerdaten**. The selected path is stored in `${XDG_CONFIG_HOME:-~/.config}/voxwerk/settings.json`; `VOXWERK_DATA_DIR` takes precedence and locks the setting. Moving copies app-managed recordings, voice models, wakeword projects, snapshots, generated features, checkpoints, models, and logs, leaving the source intact. The separate microWakeWord workspace and its fixed example/negative datasets are not moved.
+- **Einstellungen → Wakeword-Trainingsdaten → Trainingsumgebung installieren** installs upstream microWakeWord into the selected new/empty workspace, creates its isolated Python environment, and downloads the pre-generated negative/evaluation datasets. Allow at least 40 GB free space and network access; the datasets alone occupy about 25 GB after extraction. Existing files are never overwritten. VoxWerk-created recordings and generated training-run artifacts remain under the separate VoxWerk data directory.
 - Text submitted for speech synthesis is sent to the local VoxWerk server and is not uploaded by VoxWerk to a speech service.
 - Catalog browsing and model downloads contact Hugging Face at `rhasspy/piper-voices`.
 - The catalog and selected model files are checked against catalog metadata before downloaded files are activated.

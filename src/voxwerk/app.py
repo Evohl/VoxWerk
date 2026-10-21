@@ -28,6 +28,7 @@ from .wakeword_data import MAX_RECORDS, MAX_SAMPLE_BYTES, WakewordStore
 from .wakeword_training import TrainingStopped, run_training_pipeline, save_training_workspace, training_environment, validate_training_parameters, _wav_samples
 from .wakeword_testing import list_test_models, score_test_audio, score_test_pcm_frame
 from .storage import data_dir as configured_data_dir, data_directory_info, save_data_directory
+from .wakeword_install import cancel_install, get_install_job, start_install
 
 
 APP_NAME = "voxwerk"
@@ -473,6 +474,16 @@ class RequestHandler(BaseHTTPRequestHandler):
             environment = training_environment()
             self.send_json({key: value for key, value in environment.items() if key not in {"workspace", "python"}})
             return
+        if request.path.startswith("/api/wakeword/install/"):
+            import ipaddress
+
+            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                self.send_json({"error": "Installationsstatus ist nur über localhost verfügbar"}, 403)
+                return
+            job_id = request.path.rsplit("/", 1)[-1]
+            job = get_install_job(job_id)
+            self.send_json({"job": job} if job else {"error": "Installationsauftrag nicht gefunden"}, 200 if job else 404)
+            return
         if request.path == "/api/settings/data-directory":
             info = data_directory_info()
             self.send_json({"path": str(info["path"]), "source": info["source"], "locked": info["locked"]})
@@ -596,6 +607,39 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.send_json({key: environment[key] for key in ("workspace_path", "workspace_source", "workspace_locked", "ready", "message", "datasets")})
             except (OSError, ValueError) as error:
                 self.send_json({"error": str(error)}, 400)
+            return
+        if request.path == "/api/wakeword/install/start":
+            import ipaddress
+
+            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                self.send_json({"error": "Wakeword-Installation ist nur über localhost erlaubt"}, 403)
+                return
+            payload = self._read_json()
+            if payload is None:
+                return
+            environment = training_environment()
+            if environment["workspace_locked"]:
+                self.send_json({"error": "VOXWERK_WAKEWORD_DIR ist gesetzt; Installation über die Oberfläche ist gesperrt"}, 409)
+                return
+            try:
+                with TRAINING_JOBS_LOCK:
+                    training_active = any(job.get("status") in {"queued", "running"} for job in TRAINING_JOBS.values())
+                if training_active:
+                    raise ValueError("Wakeword-Umgebung kann während eines Trainings nicht installiert werden")
+                job = start_install(payload.get("path"), lambda path: save_training_workspace(str(path)))
+                self.send_json({"job": job}, 202)
+            except (OSError, ValueError) as error:
+                self.send_json({"error": str(error)}, 400)
+            return
+        if request.path.startswith("/api/wakeword/install/") and request.path.endswith("/cancel"):
+            import ipaddress
+
+            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                self.send_json({"error": "Wakeword-Installation kann nur über localhost abgebrochen werden"}, 403)
+                return
+            job_id = request.path.split("/")[-2]
+            job = cancel_install(job_id)
+            self.send_json({"job": job} if job else {"error": "Kein aktiver Installationsauftrag gefunden"}, 200 if job else 404)
             return
         if request.path == "/api/settings/data-directory":
             import ipaddress

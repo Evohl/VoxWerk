@@ -315,7 +315,9 @@
               <p class="setting-note">Ordner des microWakeWord-Projekts mit Python-Umgebung, Modellen und Trainingsdatensätzen.</p>
               <label class="label" for="wakeword-workspace-path">Arbeitsordner</label>
               <input id="wakeword-workspace-path" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="/home/benutzer/wakeword">
-              <div class="actions" style="margin-top:12px"><button class="button quiet" id="save-wakeword-workspace" type="button">Pfad speichern</button><span class="status" id="wakeword-workspace-status" role="status" aria-live="polite"></span></div>
+              <div class="actions" style="margin-top:12px"><button class="button quiet" id="save-wakeword-workspace" type="button">Pfad speichern</button><button class="button primary" id="install-wakeword-workspace" type="button">Trainingsumgebung installieren</button><button class="button quiet danger hidden" id="cancel-wakeword-install" type="button">Installation abbrechen</button></div>
+              <progress id="wakeword-install-progress" class="training-progress hidden" max="100" value="0" aria-label="Installationsfortschritt"></progress>
+              <span class="status" id="wakeword-workspace-status" role="status" aria-live="polite"></span>
             </div>
           </section>
           <aside class="settings-side"><div class="section-head"><h2>Geräteschutz</h2></div><p class="permission">VoxWerk öffnet dein Mikrofon nicht automatisch. Browser erlauben die vollständige Geräteauswahl gegebenenfalls erst nach deiner Mikrofonfreigabe.</p><p class="footnote">Die Auswahl wird in diesem Browser gespeichert. Audioausgabe kann je nach Browser unterschiedlich unterstützt sein.</p></aside>
@@ -362,6 +364,9 @@
     let selectedProfileId = '';
     let activeWakewordTab = 'profiles';
     let trainingStatusTimer = null;
+    let wakewordInstallTimer = null;
+    let activeWakewordInstallId = '';
+    let activeWakewordWorkspacePath = '';
     let testModels = [];
     const stoppingTrainingRuns = new Set();
     let wakewordTestRecorder = null;
@@ -1823,16 +1828,94 @@
       if (!response.ok) throw new Error(data.error || 'Trainingspfad konnte nicht gelesen werden.');
       const pathInput = document.querySelector('#wakeword-workspace-path');
       pathInput.value = data.workspace_path || '';
+      activeWakewordWorkspacePath = data.workspace_path || '';
       pathInput.disabled = data.workspace_locked;
       document.querySelector('#save-wakeword-workspace').disabled = data.workspace_locked;
+      document.querySelector('#install-wakeword-workspace').disabled = data.workspace_locked || data.ready;
       const sourceLabel = data.workspace_source === 'environment'
         ? 'VOXWERK_WAKEWORD_DIR überschreibt diesen Pfad.'
         : data.workspace_source === 'settings'
           ? 'Gespeicherter Trainingsordner.'
           : 'Standardordner aus dem VoxWerk-Checkout.';
       const readiness = data.ready ? ' Trainingsumgebung bereit.' : ` ${data.message || 'Trainingsumgebung unvollständig.'}`;
-      document.querySelector('#wakeword-workspace-status').textContent = `${sourceLabel}${readiness}`;
+      document.querySelector('#wakeword-workspace-status').textContent = `${sourceLabel}${readiness} Für eine neue Installation: Zielpfad eintragen und „Trainingsumgebung installieren“ wählen.`;
     }
+
+    document.querySelector('#wakeword-workspace-path').addEventListener('input', event => {
+      const setting = document.querySelector('#save-wakeword-workspace');
+      const install = document.querySelector('#install-wakeword-workspace');
+      const locked = event.currentTarget.disabled;
+      setting.disabled = locked;
+      install.disabled = locked || event.currentTarget.value.trim() === activeWakewordWorkspacePath;
+    });
+
+    async function pollWakewordInstall(jobId) {
+      try {
+        const response = await fetch(`/api/wakeword/install/${encodeURIComponent(jobId)}`);
+        const data = await response.json();
+        if (!response.ok || !data.job) throw new Error(data.error || 'Installationsstatus nicht verfügbar.');
+        const job = data.job;
+        const progress = document.querySelector('#wakeword-install-progress');
+        const status = document.querySelector('#wakeword-workspace-status');
+        const cancel = document.querySelector('#cancel-wakeword-install');
+        progress.classList.remove('hidden');
+        progress.value = job.progress || 0;
+        status.textContent = job.message || job.stage;
+        cancel.classList.toggle('hidden', !['running', 'cancelling'].includes(job.status));
+        if (job.status === 'running' || job.status === 'cancelling') {
+          wakewordInstallTimer = setTimeout(() => pollWakewordInstall(jobId), 1000);
+        } else {
+          cancel.classList.add('hidden');
+          document.querySelector('#install-wakeword-workspace').disabled = false;
+          if (job.status === 'completed') {
+            progress.value = 100;
+            await loadWakewordWorkspaceSetting();
+            status.textContent = 'Trainingsumgebung installiert und als aktiver Workspace gespeichert.';
+          } else {
+            status.textContent = job.error || job.message || 'Installation nicht abgeschlossen.';
+          }
+        }
+      } catch (error) {
+        document.querySelector('#wakeword-workspace-status').textContent = error.message;
+      }
+    }
+
+    document.querySelector('#install-wakeword-workspace').addEventListener('click', async () => {
+      const path = document.querySelector('#wakeword-workspace-path').value.trim();
+      if (!confirm('microWakeWord, TensorFlow und Trainings-/Ambient-Datensätze installieren? Die Datensätze belegen entpackt rund 25 GB; am Ziel müssen mindestens 40 GB frei sein. Der Zielordner muss neu oder leer sein.')) return;
+      const button = document.querySelector('#install-wakeword-workspace');
+      const status = document.querySelector('#wakeword-workspace-status');
+      button.disabled = true;
+      status.textContent = 'Installation wird gestartet …';
+      try {
+        const response = await fetch('/api/wakeword/install/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Installation konnte nicht gestartet werden.');
+        activeWakewordInstallId = data.job.id;
+        document.querySelector('#wakeword-install-progress').classList.remove('hidden');
+        document.querySelector('#cancel-wakeword-install').classList.remove('hidden');
+        pollWakewordInstall(data.job.id);
+      } catch (error) {
+        status.textContent = error.message;
+        button.disabled = false;
+      }
+    });
+
+    document.querySelector('#cancel-wakeword-install').addEventListener('click', async () => {
+      const progressStatus = document.querySelector('#wakeword-workspace-status');
+      try {
+        const response = await fetch(`/api/wakeword/install/${encodeURIComponent(activeWakewordInstallId)}/cancel`, { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Installation kann nicht abgebrochen werden.');
+        progressStatus.textContent = data.job.message;
+      } catch (error) {
+        progressStatus.textContent = error.message;
+      }
+    });
 
     async function loadVoxWerkDataDirectory() {
       const response = await fetch('/api/settings/data-directory');
