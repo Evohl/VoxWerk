@@ -1055,10 +1055,11 @@
         { name: 'phrase', label: 'Erkennungsphrase', required: true, maxlength: 200 },
         { name: 'language', label: 'Sprache', value: 'de-DE', maxlength: 30 },
         { name: 'profile_id', label: 'Trainingsprofil', options: [{ label: 'Keines ausgewählt', value: '' }, ...wakewordState.profiles.map(profile => ({ label: profile.name, value: profile.id }))] },
-        { name: 'variants', label: 'Aussprachevarianten, eine pro Zeile', multiline: true, wide: true }
+        { name: 'variants', label: 'Aussprachevarianten, eine pro Zeile', multiline: true, wide: true },
+        { name: 'negative_phrases', label: 'Negative Sätze/Wörter, eine pro Zeile', multiline: true, wide: true }
       ], async values => {
-        values.variants = values.variants.split('\n').map(value => value.trim()).filter(Boolean);
-        values.negative_phrases = values.negative_phrases.split('\n').map(value => value.trim()).filter(Boolean);
+        values.variants = (values.variants || '').split('\n').map(value => value.trim()).filter(Boolean);
+        values.negative_phrases = (values.negative_phrases || '').split('\n').map(value => value.trim()).filter(Boolean);
         if (!values.profile_id) values.profile_id = null;
         const result = await wakewordRequest('/api/wakeword/save', values);
         selectedWakewordId = result.wakeword.id;
