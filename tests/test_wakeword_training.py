@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from voxwerk.app import RequestHandler, TRAINING_JOBS, TRAINING_JOBS_LOCK, TRAINING_STOP_EVENTS, _run_wakeword_training
 from voxwerk.wakeword_data import WakewordStore
-from voxwerk.wakeword_training import TrainingStopped, _wav_samples, run_training_pipeline, training_environment, validate_training_parameters
+from voxwerk.wakeword_training import TrainingStopped, _wav_samples, check_wakeword_integration, run_training_pipeline, training_environment, validate_training_parameters
 
 
 class TrainingParameterTests(unittest.TestCase):
@@ -17,7 +17,17 @@ class TrainingParameterTests(unittest.TestCase):
         self.assertEqual(parameters["training_steps"], 10000)
         self.assertEqual(parameters["batch_size"], 128)
         self.assertEqual(parameters["negative_class_weight"], 15)
+        self.assertEqual(parameters["learning_rate"], 0.00101)
         self.assertEqual(parameters["dataset_weights"]["dinner_party_eval"], 0)
+
+    def test_learning_rate_accepts_precise_values_and_decimal_comma(self) -> None:
+        for value, expected in (("0,00101", 0.00101), ("0,00191", 0.00191), ("0.00191", 0.00191)):
+            with self.subTest(value=value):
+                self.assertEqual(validate_training_parameters({"learning_rate": value})["learning_rate"], expected)
+
+    def test_learning_rate_rejects_values_outside_step_grid(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Schritten von 0.0001"):
+            validate_training_parameters({"learning_rate": "0,00192"})
 
     def test_training_parameters_reject_invalid_ranges_and_datasets(self) -> None:
         for payload in (
@@ -32,6 +42,46 @@ class TrainingParameterTests(unittest.TestCase):
 
 
 class TrainingEnvironmentTests(unittest.TestCase):
+    def test_integration_check_reports_missing_components(self) -> None:
+        environment = {
+            "workspace": Path("/missing/wakeword"),
+            "python": Path("/missing/wakeword/bin/python"),
+            "package_path": "/missing/wakeword",
+            "package_source": "default",
+            "package_locked": False,
+        }
+        with patch("voxwerk.wakeword_training.training_environment", return_value=environment):
+            result = check_wakeword_integration()
+        self.assertFalse(result["ready"])
+        self.assertEqual({check["id"] for check in result["checks"] if not check["ok"]}, {
+            "package_directory", "python", "feature_script", "trainer", "ambient", "runtime_imports"
+        })
+
+    def test_integration_check_reports_success_when_runtime_imports_and_files_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            python = root / "bin" / "python"
+            feature_script = root / "scripts" / "generate_positive_features.py"
+            trainer = root / "microWakeWord" / "microwakeword" / "model_train_eval.py"
+            ambient = root / "negative_datasets" / "dinner_party_eval" / "testing_ambient" / "features_mmap"
+            for path in (python, feature_script, trainer, ambient):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+            environment = {
+                "workspace": root,
+                "python": python,
+                "package_path": str(root),
+                "package_source": "default",
+                "package_locked": False,
+            }
+            with (
+                patch("voxwerk.wakeword_training.training_environment", return_value=environment),
+                patch("voxwerk.wakeword_training.subprocess.run", return_value=type("Result", (), {"returncode": 0, "stderr": ""})()),
+            ):
+                result = check_wakeword_integration()
+        self.assertTrue(result["ready"])
+        self.assertTrue(all(check["ok"] for check in result["checks"]))
+
     def test_environment_requires_trainer_and_ambient_features(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

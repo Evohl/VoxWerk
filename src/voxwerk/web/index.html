@@ -119,6 +119,9 @@
     .training-dataset label { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 11px; }
     .training-dataset input[type="number"] { width: 100%; }
     .training-job-status { min-height: 22px; margin: 0 0 14px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .integration-checks { margin: 8px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 10px; line-height: 1.7; }
+    .integration-checks li[data-ok="true"] { color: #82d5aa; }
+    .integration-checks li[data-ok="false"] { color: #f1aa80; }
     .training-progress { width: 100%; height: 9px; margin: 0 0 8px; appearance: none; background: #dfe5e7; border: 0; }
     .training-progress::-webkit-progress-bar { background: #dfe5e7; }
     .training-progress::-webkit-progress-value { background: var(--acid); transition: width .2s ease; }
@@ -318,6 +321,7 @@
               <div class="actions" style="margin-top:12px"><button class="button primary" id="install-wakeword-package" type="button">Wakeword-Paket installieren</button><button class="button quiet danger hidden" id="cancel-wakeword-install" type="button">Installation abbrechen</button></div>
               <progress id="wakeword-install-progress" class="training-progress hidden" max="100" value="0" aria-label="Installationsfortschritt"></progress>
               <span class="status" id="wakeword-package-status" role="status" aria-live="polite"></span>
+              <ul id="wakeword-integration-checks" class="integration-checks" aria-label="Integrationsprüfung"></ul>
             </div>
           </section>
           <aside class="settings-side"><div class="section-head"><h2>Geräteschutz</h2></div><p class="permission">VoxWerk öffnet dein Mikrofon nicht automatisch. Browser erlauben die vollständige Geräteauswahl gegebenenfalls erst nach deiner Mikrofonfreigabe.</p><p class="footnote">Die Auswahl wird in diesem Browser gespeichert. Audioausgabe kann je nach Browser unterschiedlich unterstützt sein.</p></aside>
@@ -1515,7 +1519,7 @@
       trainingForm.className = 'wakeword-form';
       trainingForm.innerHTML = `<div><label class="label" for="training-steps">Trainingsschritte</label><input id="training-steps" name="training_steps" type="number" min="1000" max="50000" step="1000" value="10000" required><small class="parameter-help">Wie oft das Modell die Trainingsbeispiele durchläuft. Mehr Schritte dauern länger.</small></div>
         <div><label class="label" for="training-batch-size">Batchgröße</label><input id="training-batch-size" name="batch_size" type="number" min="16" max="512" step="16" value="128" required><small class="parameter-help">Beispiele pro Lernschritt. Größere Batches brauchen mehr Arbeitsspeicher.</small></div>
-        <div><label class="label" for="training-learning-rate">Lernrate</label><input id="training-learning-rate" name="learning_rate" type="number" min="0.00001" max="0.01" step="0.0001" value="0.001" required><small class="parameter-help">Größe der Gewichtsänderung je Schritt; zu hoch kann das Lernen instabil machen.</small></div>
+        <div><label class="label" for="training-learning-rate">Lernrate</label><input id="training-learning-rate" name="learning_rate" type="number" min="0.00001" max="0.01" step="0.0001" value="0.00101" required><small class="parameter-help">Erlaubte Schritte: 0,00001 + n × 0,0001. Beispielwerte: 0,00101 oder 0,00191.</small></div>
         <div><label class="label" for="training-negative-weight">Negativgewicht</label><input id="training-negative-weight" name="negative_class_weight" type="number" min="1" max="50" step="1" value="15" required><small class="parameter-help">Gewichtung falscher Auslösungen im Verhältnis zu verpassten Wakewords.</small></div>
         <div class="wide"><label class="label" for="training-snapshot">Datensatz-Snapshot</label><select id="training-snapshot" name="run_id" required><option value="">Snapshot auswählen</option></select></div>
         <div class="wide"><span class="label">Trainingsbasis · Sampling-Gewicht 0 bis 50</span><small class="parameter-help">Zusätzliche Sprache, Gespräche und Umgebungsgeräusche als Negativbeispiele. Gewicht 0 schließt den Datensatz aus.</small><div id="training-datasets"></div></div>
@@ -1578,10 +1582,17 @@
         const selectedRun = runsData.runs.find(run => run.id === snapshotSelect.value);
         const positive = selectedRun?.samples.filter(sample => sample.kind === 'positive' && sample.filename.toLowerCase().endsWith('.wav')).length || 0;
         const negative = selectedRun?.samples.filter(sample => sample.kind === 'negative' && sample.filename.toLowerCase().endsWith('.wav')).length || 0;
-        trainingForm.querySelector('#training-selection-summary').textContent = selectedRun
-          ? `${positive} positive · ${negative} negative WAVs`
-          : 'Snapshot mit mindestens 5 positiven und 5 negativen WAVs auswählen';
         const trainingActive = runsData.runs.some(run => ['queued', 'running'].includes(run.status));
+        const selectionMessage = !trainingOptions.ready
+          ? 'Wakeword-Paket ist nicht installiert oder nicht bereit.'
+          : trainingActive
+            ? 'Es läuft bereits ein Training.'
+            : !selectedRun
+              ? 'Vorbereiteten Snapshot auswählen.'
+              : positive < 5 || negative < 5
+                ? `Mindestens 5 positive und 5 negative WAVs nötig (vorhanden: ${positive} / ${negative}).`
+                : `${positive} positive · ${negative} negative WAVs; Snapshot bereit.`;
+        trainingForm.querySelector('#training-selection-summary').textContent = selectionMessage;
         trainingForm.querySelector('button[type="submit"]').disabled = !trainingOptions.ready || !selectedRun || positive < 5 || negative < 5 || trainingActive;
       };
       snapshotSelect.addEventListener('change', updateTrainingSelection);
@@ -1829,6 +1840,13 @@
       document.querySelector('#install-wakeword-package').disabled = data.package_locked || data.ready;
       const sourceLabel = data.package_source === 'environment' ? 'VOXWERK_WAKEWORD_DIR überschreibt den Installationsort. ' : '';
       document.querySelector('#wakeword-package-status').textContent = `${sourceLabel}${data.ready ? 'Installiert und bereit.' : data.message || 'Nicht installiert.'}`;
+      const checks = document.querySelector('#wakeword-integration-checks');
+      checks.replaceChildren(...(data.checks || []).map(check => {
+        const item = document.createElement('li');
+        item.dataset.ok = String(check.ok);
+        item.textContent = `${check.ok ? 'OK' : 'Fehlt'} · ${check.label}: ${check.detail}`;
+        return item;
+      }));
     }
 
     async function pollWakewordInstall(jobId) {

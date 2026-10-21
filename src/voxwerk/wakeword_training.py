@@ -71,6 +71,48 @@ def training_environment() -> dict[str, Any]:
     }
 
 
+def check_wakeword_integration() -> dict[str, Any]:
+    environment = training_environment()
+    root = Path(environment["workspace"])
+    python = Path(environment["python"])
+    checks = [
+        {"id": "package_directory", "label": "Paketordner", "ok": root.is_dir(), "detail": str(root)},
+        {"id": "python", "label": "Python-Umgebung", "ok": python.is_file(), "detail": str(python)},
+        {"id": "feature_script", "label": "Feature-Skript", "ok": (root / "scripts" / "generate_positive_features.py").is_file(), "detail": "scripts/generate_positive_features.py"},
+        {"id": "trainer", "label": "microWakeWord-Trainer", "ok": (root / "microWakeWord" / "microwakeword" / "model_train_eval.py").is_file(), "detail": "microWakeWord/microwakeword/model_train_eval.py"},
+    ]
+    ambient = root / "negative_datasets" / "dinner_party_eval"
+    has_ambient = any(next((ambient / split).glob("**/*_mmap"), None) is not None for split in ("validation_ambient", "testing_ambient"))
+    checks.append({"id": "ambient", "label": "Ambient-Auswertung", "ok": has_ambient, "detail": "dinner_party_eval"})
+
+    imports_ok = False
+    import_detail = "Python-Umgebung fehlt"
+    if python.is_file():
+        try:
+            result = subprocess.run(
+                [str(python), "-c", "import numpy, tensorflow, ai_edge_litert, pymicro_features, mmap_ninja; from microwakeword.inference import Model"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=45,
+                check=False,
+            )
+            imports_ok = result.returncode == 0
+            import_detail = "Alle Laufzeitmodule importierbar" if imports_ok else (result.stderr.strip().splitlines()[-1] if result.stderr.strip() else f"Importtest fehlgeschlagen ({result.returncode})")
+        except (OSError, subprocess.TimeoutExpired) as error:
+            import_detail = str(error) or "Importtest-Zeitüberschreitung"
+    checks.append({"id": "runtime_imports", "label": "Laufzeit-Abhängigkeiten", "ok": imports_ok, "detail": import_detail})
+    ready = all(check["ok"] for check in checks)
+    return {
+        "package_path": environment["package_path"],
+        "package_source": environment["package_source"],
+        "package_locked": environment["package_locked"],
+        "ready": ready,
+        "message": "Wakeword-Paket ist vollständig integriert." if ready else "Mindestens eine Integrationsprüfung ist fehlgeschlagen.",
+        "checks": checks,
+    }
+
+
 def validate_training_parameters(payload: object) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("Trainingsparameter sind ungültig")
@@ -89,12 +131,23 @@ def validate_training_parameters(payload: object) -> dict[str, Any]:
             raise ValueError(f"{name} muss zwischen {minimum} und {maximum} liegen")
         return result
 
-    try:
-        learning_rate = float(payload.get("learning_rate", 0.001))
-    except (TypeError, ValueError):
-        raise ValueError("Lernrate muss zwischen 0.00001 und 0.01 liegen") from None
+    raw_learning_rate = payload.get("learning_rate", 0.00101)
+    if isinstance(raw_learning_rate, str):
+        raw_learning_rate = raw_learning_rate.strip().replace(",", ".")
+        try:
+            learning_rate = float(raw_learning_rate)
+        except (TypeError, ValueError):
+            raise ValueError("Lernrate muss zwischen 0.00001 und 0.01 liegen") from None
+    else:
+        try:
+            learning_rate = float(raw_learning_rate)
+        except (TypeError, ValueError):
+            raise ValueError("Lernrate muss zwischen 0.00001 und 0.01 liegen") from None
     if not math.isfinite(learning_rate) or not 0.00001 <= learning_rate <= 0.01:
         raise ValueError("Lernrate muss zwischen 0.00001 und 0.01 liegen")
+    learning_rate_steps = (learning_rate - 0.00001) / 0.0001
+    if not math.isclose(learning_rate_steps, round(learning_rate_steps), rel_tol=0, abs_tol=1e-8):
+        raise ValueError("Lernrate muss in Schritten von 0.0001 ab 0.00001 angegeben werden")
 
     dataset_weights = payload.get("dataset_weights", {})
     if not isinstance(dataset_weights, dict) or any(dataset_id not in TRAINING_DATASETS for dataset_id in dataset_weights):
