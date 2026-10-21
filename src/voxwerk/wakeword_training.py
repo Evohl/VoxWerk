@@ -6,7 +6,6 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
 import time
 import wave
 from pathlib import Path, PurePosixPath
@@ -19,40 +18,25 @@ TRAINING_DATASETS = {
     "no_speech": {"label": "Umgebungsgeräusche", "default_weight": 5, "truncation_strategy": "random"},
     "dinner_party_eval": {"label": "Ambient-Auswertung", "default_weight": 0, "truncation_strategy": "split", "required": True},
 }
-TRAINING_SETTINGS_FILENAME = "wakeword_training.json"
 
 
 class TrainingStopped(Exception):
     pass
 
 
+def wakeword_package_dir() -> Path:
+    return Path.home() / ".venvs" / "wakeword"
+
+
 def training_environment() -> dict[str, Any]:
     configured_root = os.environ.get("VOXWERK_WAKEWORD_DIR")
-    default_root = Path(__file__).resolve().parents[3] / "wakeword"
-    settings_path = _training_settings_path()
-    saved_root = ""
-    if not configured_root and settings_path.is_file():
-        try:
-            settings = json.loads(settings_path.read_text(encoding="utf-8"))
-            saved_root = str(settings.get("workspace", "")) if isinstance(settings, dict) else ""
-        except (OSError, json.JSONDecodeError):
-            saved_root = ""
-    if configured_root:
-        root = Path(configured_root).expanduser().resolve()
-        source = "environment"
-    elif saved_root:
-        root = Path(saved_root).expanduser().resolve()
-        source = "settings"
-    else:
-        root = default_root.resolve()
-        source = "default"
+    root = (Path(configured_root).expanduser() if configured_root else wakeword_package_dir()).resolve()
     configured_python = os.environ.get("VOXWERK_WAKEWORD_PYTHON")
     if configured_python:
         python = Path(configured_python).expanduser().resolve()
     else:
-        unix_python = root / ".venv" / "bin" / "python"
-        windows_python = root / ".venv" / "Scripts" / "python.exe"
-        python = unix_python if unix_python.is_file() else windows_python
+        candidates = (root / "bin" / "python", root / ".venv" / "bin" / "python", root / "Scripts" / "python.exe", root / ".venv" / "Scripts" / "python.exe")
+        python = next((candidate for candidate in candidates if candidate.is_file()), candidates[0])
 
     script = root / "scripts" / "generate_positive_features.py"
     trainer = root / "microWakeWord" / "microwakeword" / "model_train_eval.py"
@@ -74,68 +58,17 @@ def training_environment() -> dict[str, Any]:
     ready = python.is_file() and script.is_file() and trainer.is_file() and has_ambient_features
     message = ""
     if not ready:
-        message = "Trainingsumgebung im ausgewählten Ordner fehlt oder Ambient-Auswertungsfeatures sind nicht vorhanden."
+        message = "Das Wakeword-Paket ist nicht installiert oder unvollständig. Installiere es unter Einstellungen → Wakeword-Paket."
     return {
         "ready": ready,
         "message": message,
         "datasets": datasets,
         "workspace": root,
         "python": python,
-        "workspace_path": str(root),
-        "workspace_source": source,
-        "workspace_locked": bool(configured_root),
+        "package_path": str(root),
+        "package_source": "environment" if configured_root else "default",
+        "package_locked": bool(configured_root),
     }
-
-
-def _training_settings_path() -> Path:
-    configured_data_home = os.environ.get("XDG_DATA_HOME")
-    data_home = Path(configured_data_home).expanduser() if configured_data_home else Path.home() / ".local" / "share"
-    return data_home / "voxwerk" / TRAINING_SETTINGS_FILENAME
-
-
-def save_training_workspace(value: object) -> dict[str, Any]:
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError("Pfad zum Wakeword-Trainingsprojekt fehlt")
-    candidate = Path(value.strip()).expanduser()
-    if not candidate.is_absolute():
-        raise ValueError("Bitte einen absoluten Ordnerpfad angeben")
-    try:
-        workspace = candidate.resolve(strict=True)
-    except OSError as error:
-        raise ValueError(f"Trainingsordner ist nicht erreichbar: {error}") from None
-    if not workspace.is_dir():
-        raise ValueError("Der gewählte Trainingspfad ist kein Ordner")
-    required_paths = (
-        workspace / "scripts" / "generate_positive_features.py",
-        workspace / "microWakeWord" / "microwakeword" / "model_train_eval.py",
-        workspace / "negative_datasets" / "dinner_party_eval",
-    )
-    missing = [path for path in required_paths if not path.exists()]
-    configured_python = os.environ.get("VOXWERK_WAKEWORD_PYTHON")
-    workspace_python = workspace / ".venv" / "bin" / "python"
-    if configured_python:
-        if not Path(configured_python).expanduser().is_file():
-            missing.append(Path(configured_python).expanduser())
-    elif not workspace_python.is_file():
-        missing.append(workspace_python)
-    if missing:
-        raise ValueError("Der Ordner sieht nicht wie eine vollständige microWakeWord-Installation aus; fehlt: " + ", ".join(path.name for path in missing))
-    if os.environ.get("VOXWERK_WAKEWORD_DIR"):
-        raise ValueError("VOXWERK_WAKEWORD_DIR ist gesetzt und überschreibt den in den Einstellungen gewählten Pfad")
-
-    settings_path = _training_settings_path()
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=settings_path.parent, prefix=".wakeword-training-", delete=False) as temporary_file:
-            temporary_path = Path(temporary_file.name)
-            json.dump({"workspace": str(workspace)}, temporary_file, ensure_ascii=False, indent=2)
-            temporary_file.write("\n")
-        temporary_path.replace(settings_path)
-    finally:
-        if temporary_path and temporary_path.exists():
-            temporary_path.unlink()
-    return training_environment()
 
 
 def validate_training_parameters(payload: object) -> dict[str, Any]:

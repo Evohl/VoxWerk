@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from voxwerk.app import RequestHandler, TRAINING_JOBS, TRAINING_JOBS_LOCK, TRAINING_STOP_EVENTS, _run_wakeword_training
 from voxwerk.wakeword_data import WakewordStore
-from voxwerk.wakeword_training import TrainingStopped, _wav_samples, run_training_pipeline, save_training_workspace, training_environment, validate_training_parameters
+from voxwerk.wakeword_training import TrainingStopped, _wav_samples, run_training_pipeline, training_environment, validate_training_parameters
 
 
 class TrainingParameterTests(unittest.TestCase):
@@ -52,58 +52,39 @@ class TrainingEnvironmentTests(unittest.TestCase):
                 environment = training_environment()
             self.assertFalse(environment["ready"])
 
-    def test_workspace_path_can_be_saved_and_environment_override_wins(self) -> None:
+    def test_package_is_installed_at_a_fixed_location_under_home(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            workspace = root / "wakeword-project"
+            home = Path(directory)
+            package = home / ".venvs" / "wakeword"
             for relative_path in (
+                "bin/python",
                 "scripts/generate_positive_features.py",
                 "microWakeWord/microwakeword/model_train_eval.py",
-                ".venv/bin/python",
-                "negative_datasets/dinner_party_eval",
+                "negative_datasets/dinner_party_eval/testing_ambient/features_mmap",
             ):
-                target = workspace / relative_path
+                target = package / relative_path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.touch()
-            with patch.dict("os.environ", {"XDG_DATA_HOME": str(root / "xdg"), "VOXWERK_WAKEWORD_DIR": ""}, clear=False):
-                result = save_training_workspace(str(workspace))
-                self.assertEqual(result["workspace"], workspace)
-                self.assertEqual(result["workspace_source"], "settings")
-                override = root / "environment-project"
-                override.mkdir()
-                with patch.dict("os.environ", {"VOXWERK_WAKEWORD_DIR": str(override)}, clear=False):
-                    environment = training_environment()
-                    self.assertEqual(environment["workspace"], override)
-                    self.assertTrue(environment["workspace_locked"])
+            with patch.dict("os.environ", {"HOME": directory, "VOXWERK_WAKEWORD_DIR": "", "VOXWERK_WAKEWORD_PYTHON": ""}, clear=False):
+                environment = training_environment()
+            self.assertTrue(environment["ready"])
+            self.assertEqual(environment["workspace"], package.resolve())
+            self.assertEqual(environment["python"], package.resolve() / "bin" / "python")
+            self.assertEqual(environment["package_source"], "default")
+            self.assertFalse(environment["package_locked"])
 
-    def test_workspace_path_rejects_relative_or_missing_directories(self) -> None:
-        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"VOXWERK_WAKEWORD_DIR": ""}, clear=False):
-            with self.assertRaisesRegex(ValueError, "absoluten"):
-                save_training_workspace("relative/path")
-            with self.assertRaisesRegex(ValueError, "nicht erreichbar"):
-                save_training_workspace(str(Path(directory) / "missing"))
+    def test_missing_package_reports_installation_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"HOME": directory, "VOXWERK_WAKEWORD_DIR": ""}, clear=False):
+            environment = training_environment()
+        self.assertFalse(environment["ready"])
+        self.assertIn("Wakeword-Paket", environment["message"])
 
-    def test_workspace_can_use_an_external_configured_python(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            workspace = root / "wakeword-project"
-            external_python = root / "python"
-            external_python.touch()
-            for relative_path in (
-                "scripts/generate_positive_features.py",
-                "microWakeWord/microwakeword/model_train_eval.py",
-                "negative_datasets/dinner_party_eval",
-            ):
-                target = workspace / relative_path
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.touch()
-            with patch.dict("os.environ", {
-                "XDG_DATA_HOME": str(root / "xdg"),
-                "VOXWERK_WAKEWORD_DIR": "",
-                "VOXWERK_WAKEWORD_PYTHON": str(external_python),
-            }, clear=False):
-                result = save_training_workspace(str(workspace))
-            self.assertEqual(result["workspace"], workspace)
+    def test_environment_override_locks_package_location(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"VOXWERK_WAKEWORD_DIR": directory}, clear=False):
+            environment = training_environment()
+        self.assertEqual(environment["workspace"], Path(directory).resolve())
+        self.assertEqual(environment["package_source"], "environment")
+        self.assertTrue(environment["package_locked"])
 
 
 class TrainingSnapshotTests(unittest.TestCase):

@@ -5,15 +5,15 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable
+from typing import Any
 
 from .wakeword_feature_generator import __file__ as feature_generator_path
+from .wakeword_training import wakeword_package_dir
 
 UPSTREAM_REPOSITORY = "https://github.com/kahrendt/microWakeWord.git"
 DATASET_BASE_URL = "https://huggingface.co/datasets/kahrendt/microwakeword/resolve/main/"
@@ -159,36 +159,24 @@ def _download_dataset(archive_name: str, dataset_name: str, workspace: Path, can
     partial.unlink(missing_ok=True)
 
 
-def _install_workspace(path: Path, job_id: str, cancel: threading.Event, on_complete: Callable[[Path], None]) -> None:
-    path = path.expanduser()
-    if path.is_symlink():
-        raise ValueError("Der Installationsordner darf kein symbolischer Link sein")
-    path = path.resolve()
-    if path == Path(path.anchor) or path == Path.home().resolve():
-        raise ValueError("Wähle einen eigenen Unterordner auf dem Datenlaufwerk, nicht das Laufwerks- oder Home-Verzeichnis.")
-    parent = path.parent
-    while not parent.exists() and parent != parent.parent:
-        parent = parent.parent
-    if not parent.is_dir():
-        raise ValueError("Das übergeordnete Laufwerk ist nicht verfügbar")
-    if shutil.disk_usage(parent).free < MINIMUM_FREE_BYTES:
-        raise ValueError("Am Ziel sind weniger als 40 GB frei; die entpackten Datensätze belegen hier rund 25 GB, dazu kommen Python-Umgebung und temporärer Download.")
-
+def _install_package(job_id: str, cancel: threading.Event) -> None:
+    path = wakeword_package_dir().resolve()
+    marker_path = path / INSTALL_MARKER
     if path.exists():
         if not path.is_dir():
-            raise ValueError("Der Installationspfad ist kein Ordner")
-        marker_path = path / INSTALL_MARKER
-        if marker_path.is_file():
-            marker = json.loads(marker_path.read_text(encoding="utf-8"))
-            if marker.get("managed_by") != "voxwerk":
-                raise ValueError("Zielordner enthält keinen gültigen VoxWerk-Installationsmarker")
-        elif any(path.iterdir()):
-            raise ValueError("Der Wakeword-Installationsordner muss neu oder leer sein; vorhandene Dateien bleiben unangetastet.")
-        else:
-            (path / INSTALL_MARKER).write_text(json.dumps({"managed_by": "voxwerk", "version": 1}) + "\n", encoding="utf-8")
-    else:
-        path.mkdir(parents=True)
-        (path / INSTALL_MARKER).write_text(json.dumps({"managed_by": "voxwerk", "version": 1}) + "\n", encoding="utf-8")
+            raise ValueError(f"{path} ist kein Ordner")
+        if not marker_path.is_file() and any(path.iterdir()):
+            raise ValueError(f"{path} enthält fremde Dateien; sie werden nicht überschrieben. Entferne oder verschiebe den Ordner und starte die Installation erneut.")
+
+    parent = path
+    while not parent.exists() and parent != parent.parent:
+        parent = parent.parent
+    if shutil.disk_usage(parent).free < MINIMUM_FREE_BYTES:
+        raise ValueError("Am Installationsort sind weniger als 40 GB frei; die entpackten Datensätze belegen rund 25 GB, dazu kommen Python-Umgebung und temporärer Download.")
+
+    path.mkdir(parents=True, exist_ok=True)
+    if not marker_path.is_file():
+        marker_path.write_text(json.dumps({"managed_by": "voxwerk", "version": 1}) + "\n", encoding="utf-8")
 
     _check_cancel(cancel)
     python = _python_for_venv()
@@ -203,11 +191,9 @@ def _install_workspace(path: Path, job_id: str, cancel: threading.Event, on_comp
         clone_tmp.rename(micro_wake_word)
 
     _check_cancel(cancel)
-    venv_python = path / ".venv" / "bin" / "python"
+    venv_python = path / "bin" / "python"
     if not venv_python.is_file():
-        if (path / ".venv").exists():
-            raise RuntimeError("Unvollständige .venv vorhanden; entferne ausschließlich diesen unvollständigen Installationsordner und starte erneut.")
-        _run_command([str(python), "-m", "venv", str(path / ".venv")], path, log_path, "Erstelle isolierte Python-Umgebung", cancel, job_id)
+        _run_command([str(python), "-m", "venv", str(path)], path, log_path, "Erstelle isolierte Python-Umgebung", cancel, job_id)
     _run_command([str(venv_python), "-m", "pip", "install", "--upgrade", "pip"], path, log_path, "Aktualisiere pip", cancel, job_id)
     _run_command([str(venv_python), "-m", "pip", "install", "-e", str(micro_wake_word)], path, log_path, "Installiere microWakeWord und TensorFlow", cancel, job_id)
 
@@ -226,17 +212,12 @@ def _install_workspace(path: Path, job_id: str, cancel: threading.Event, on_comp
         raise RuntimeError("Ambient-Auswertungsarchiv enthält keine verwendbaren microWakeWord-Features")
 
     _check_cancel(cancel)
-    on_complete(path)
-    _set_job(job_id, status="completed", stage="Abgeschlossen", progress=100, message="Trainingsumgebung und Datensätze sind installiert.", error="")
+    _set_job(job_id, status="completed", stage="Abgeschlossen", progress=100, message="Das Wakeword-Paket ist installiert.", error="")
 
 
-def start_install(path_value: object, on_complete: Callable[[Path], None]) -> dict[str, Any]:
+def start_install() -> dict[str, Any]:
     global INSTALL_JOB, INSTALL_CANCEL
-    if not isinstance(path_value, str) or not path_value.strip():
-        raise ValueError("Bitte zuerst den Zielordner für die Wakeword-Trainingsumgebung eintragen.")
-    path = Path(path_value.strip()).expanduser()
-    if not path.is_absolute():
-        raise ValueError("Bitte einen absoluten Zielpfad angeben.")
+    path = wakeword_package_dir()
     with INSTALL_LOCK:
         if INSTALL_JOB and INSTALL_JOB.get("status") in {"queued", "running", "cancelling"}:
             raise ValueError("Eine Wakeword-Installation läuft bereits.")
@@ -257,7 +238,7 @@ def start_install(path_value: object, on_complete: Callable[[Path], None]) -> di
 
     def worker() -> None:
         try:
-            _install_workspace(path, job_id, cancel, on_complete)
+            _install_package(job_id, cancel)
         except InstallCancelled as error:
             _set_job(job_id, status="cancelled", stage="Abgebrochen", message=str(error), error="")
         except Exception as error:

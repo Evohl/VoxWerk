@@ -5,8 +5,21 @@ import unittest
 import zipfile
 from pathlib import Path
 from threading import Event
+from unittest.mock import patch
 
-from voxwerk.wakeword_install import _safe_extract
+from voxwerk.wakeword_install import _install_package, _safe_extract
+
+
+class WakewordPackageInstallTests(unittest.TestCase):
+    def test_refuses_to_install_into_a_folder_with_foreign_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory) / ".venvs" / "wakeword"
+            package.mkdir(parents=True)
+            (package / "user-file.txt").write_text("keep", encoding="utf-8")
+            with patch("voxwerk.wakeword_install.wakeword_package_dir", return_value=package):
+                with self.assertRaisesRegex(ValueError, "fremde Dateien"):
+                    _install_package("install-test", Event())
+            self.assertEqual((package / "user-file.txt").read_text(encoding="utf-8"), "keep")
 
 
 class WakewordArchiveExtractionTests(unittest.TestCase):

@@ -2,13 +2,42 @@ from __future__ import annotations
 
 import json
 import base64
+import math
 import sys
+import wave
 from collections import deque
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from pymicro_features import MicroFrontend
+
+CONTEXT_SECONDS = 3.2
+TAIL_SECONDS = 0.2
+ROOM_TONE_RMS = 10
+
+
+def read_wav(path: Path) -> np.ndarray:
+    with wave.open(str(path), "rb") as audio_file:
+        if audio_file.getnchannels() != 1 or audio_file.getsampwidth() != 2:
+            raise ValueError("Testaudio muss Mono mit 16 Bit sein")
+        rate = audio_file.getframerate()
+        audio = np.frombuffer(audio_file.readframes(audio_file.getnframes()), dtype=np.int16)
+    if rate != 16000:
+        from scipy.signal import resample_poly
+
+        divisor = math.gcd(16000, rate)
+        audio = np.clip(resample_poly(audio.astype(np.float32), 16000 // divisor, rate // divisor), -32768, 32767).astype(np.int16)
+    return audio
+
+
+def embed_in_context(audio: np.ndarray) -> np.ndarray:
+    # The preprocessor needs a lead-in before noise reduction and gain control settle.
+    total, tail = int(CONTEXT_SECONDS * 16000), int(TAIL_SECONDS * 16000)
+    output = np.random.default_rng(0).normal(0, ROOM_TONE_RMS, total).astype(np.int16)
+    audio = audio[-(total - tail):]
+    output[total - tail - len(audio): total - tail] = audio
+    return output
 
 
 def complete_pcm_frames(pcm: bytes, remainder: bytes = b"", frame_bytes: int = 320) -> tuple[list[bytes], bytes]:
@@ -24,12 +53,9 @@ def streaming_score(probabilities: list[float], ready: bool) -> dict[str, Any]:
 
 
 def _serve(workspace: Path) -> None:
-    scripts_dir = workspace / "scripts"
     micro_wake_word_dir = workspace / "microWakeWord"
-    sys.path.insert(0, str(scripts_dir))
     sys.path.insert(0, str(micro_wake_word_dir))
 
-    import evaluate_models
     from microwakeword.inference import Model
 
     active_path = ""
@@ -74,9 +100,9 @@ def _serve(workspace: Path) -> None:
                 sys.stdout.flush()
                 continue
             audio_path = Path(request["audio_path"])
-            audio = evaluate_models.read_wav(audio_path)
+            audio = read_wav(audio_path)
             if request.get("reset"):
-                audio = evaluate_models.embed_in_context(audio)
+                audio = embed_in_context(audio)
             predictions = np.asarray(model.predict_clip(audio, step_ms=10), dtype=np.float32)
             combined = [*recent_predictions, *predictions.tolist()]
             if len(combined) >= 5:
