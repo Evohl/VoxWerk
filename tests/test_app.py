@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from voxwerk.app import _api_client_allowed, _download_file, catalog_entries, filter_catalog, language_display_name, remove_voice, validate_voice_id
+from voxwerk.app import _api_client_allowed, _download_file, allocate_weighted_samples, build_sample_plan, catalog_entries, filter_catalog, language_display_name, remove_voice, validate_voice_id
 
 
 class VoiceCatalogTests(unittest.TestCase):
@@ -88,6 +88,39 @@ class ApiAccessTests(unittest.TestCase):
 
     def test_invalid_addresses_are_rejected(self) -> None:
         self.assertFalse(_api_client_allowed("not-an-ip", "0.0.0.0"))
+
+
+class SampleAllocationTests(unittest.TestCase):
+    def test_weighted_allocation_sums_to_requested_total(self) -> None:
+        allocation = allocate_weighted_samples(11, {"voice-a": 1, "voice-b": 2, "voice-c": 0})
+        self.assertEqual(allocation, {"voice-a": 4, "voice-b": 7})
+        self.assertEqual(sum(allocation.values()), 11)
+
+    def test_allocation_rejects_invalid_totals_and_weights(self) -> None:
+        invalid_inputs = (
+            (0, {"voice": 100}),
+            (501, {"voice": 100}),
+            (2, {}),
+            (2, {"voice": 0}),
+            (2, {"voice": "100"}),
+        )
+        for total, weights in invalid_inputs:
+            with self.subTest(total=total, weights=weights), self.assertRaises(ValueError):
+                allocate_weighted_samples(total, weights)
+
+    def test_sample_plan_spreads_variants_and_speaking_rates(self) -> None:
+        plan = build_sample_plan(["Hey Nova", "Hei Nova"], 10, tempo_variation=20, seed=42)
+        self.assertEqual(len(plan), 10)
+        self.assertEqual({item["text"] for item in plan}, {"Hey Nova", "Hei Nova"})
+        self.assertEqual({item["length_scale"] for item in plan}, {0.8, 0.9, 1.0, 1.1, 1.2})
+        self.assertEqual(plan, build_sample_plan(["Hey Nova", "Hei Nova"], 10, tempo_variation=20, seed=42))
+
+    def test_sample_plan_rejects_empty_text_and_excessive_variation(self) -> None:
+        with self.assertRaises(ValueError):
+            build_sample_plan([], 4)
+        self.assertEqual({item["text"] for item in build_sample_plan(["", "Hey Nova"], 4)}, {"Hey Nova"})
+        with self.assertRaises(ValueError):
+            build_sample_plan(["Wakeword"], 4, tempo_variation=31)
 
 
 if __name__ == "__main__":

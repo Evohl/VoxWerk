@@ -8,11 +8,13 @@ import io
 import json
 import logging
 import os
+import random
 import re
 import shutil
 import threading
 import time
 import unicodedata
+import uuid
 import wave
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,6 +24,7 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 from urllib.request import urlopen
 
 from importlib.resources import files
+from .wakeword_data import MAX_RECORDS, MAX_SAMPLE_BYTES, WakewordStore
 
 
 APP_NAME = "voxwerk"
@@ -33,6 +36,8 @@ MAX_TEXT_LENGTH = 2500
 MAX_MODEL_BYTES = 500 * 1024 * 1024
 VOICE_ID_PATTERN = re.compile(r"[^/\\]{1,100}\Z")
 SYNTHESIS_LOCK = threading.Lock()
+GENERATION_JOBS: dict[str, dict[str, object]] = {}
+GENERATION_JOBS_LOCK = threading.Lock()
 LOGGER = logging.getLogger(APP_NAME)
 
 
@@ -224,6 +229,119 @@ def safe_slug(text: str) -> str:
     return re.sub(r"[^a-zA-Z0-9]+", "-", ascii_text).strip("-").lower()[:52] or "speech"
 
 
+def allocate_weighted_samples(total: int, weights: dict[str, int]) -> dict[str, int]:
+    if isinstance(total, bool) or not isinstance(total, int) or not 1 <= total <= 500:
+        raise ValueError("Samplezahl muss zwischen 1 und 500 liegen")
+    if any(isinstance(weight, bool) or not isinstance(weight, int) or not 0 <= weight <= 100 for weight in weights.values()):
+        raise ValueError("Mindestens eine Stimme mit Gewicht 1 bis 100 auswählen")
+    selected = {voice_id: weight for voice_id, weight in weights.items() if weight > 0}
+    if not selected:
+        raise ValueError("Mindestens eine Stimme mit Gewicht 1 bis 100 auswählen")
+    weight_total = sum(selected.values())
+    exact = {voice_id: total * weight / weight_total for voice_id, weight in selected.items()}
+    allocation = {voice_id: int(count) for voice_id, count in exact.items()}
+    remainder = total - sum(allocation.values())
+    priority = sorted(selected, key=lambda voice_id: (-(exact[voice_id] - allocation[voice_id]), voice_id))
+    for voice_id in priority[:remainder]:
+        allocation[voice_id] += 1
+    return allocation
+
+
+def synthesize_wav(text: str, voice_id: str, rate: float = 1.0) -> bytes:
+    voice = next((item for item in installed_voices() if item["id"] == voice_id), None)
+    if voice is None:
+        raise ValueError(f"Stimme {voice_id} ist nicht installiert")
+    output = io.BytesIO()
+    with SYNTHESIS_LOCK:
+        from piper import SynthesisConfig
+
+        model = load_voice(str(voice["path"]))
+        with wave.open(output, "wb") as wav_file:
+            model.synthesize_wav(text, wav_file=wav_file, syn_config=SynthesisConfig(length_scale=1.0 / rate))
+    return output.getvalue()
+
+
+def build_sample_plan(texts: list[str], total: int, tempo_variation: int = 20, seed: int | None = None) -> list[dict[str, object]]:
+    if any(not isinstance(text, str) for text in texts):
+        raise ValueError("Mindestens eine gültige Textvariante wird benötigt")
+    texts = [text.strip() for text in texts if text.strip()]
+    if not texts:
+        raise ValueError("Mindestens eine gültige Textvariante wird benötigt")
+    if isinstance(tempo_variation, bool) or not isinstance(tempo_variation, int) or not 0 <= tempo_variation <= 30:
+        raise ValueError("Tempo-Streuung muss zwischen 0 und 30 Prozent liegen")
+    spread = tempo_variation / 100
+    length_scales = [1.0] if spread == 0 else [1.0 - spread, 1.0 - spread / 2, 1.0, 1.0 + spread / 2, 1.0 + spread]
+    plan = [
+        {"text": texts[index % len(texts)].strip(), "length_scale": length_scales[index % len(length_scales)]}
+        for index in range(total)
+    ]
+    random.Random(seed).shuffle(plan)
+    return plan
+
+
+def _run_sample_generation(
+    job_id: str,
+    wakeword_id: str,
+    allocation: dict[str, int],
+    sample_kind: str = "positive",
+    tempo_variation: int = 20,
+    relative_weights: dict[str, int] | None = None,
+    seed: int | None = None,
+) -> None:
+    store = WakewordStore(data_dir())
+    try:
+        project = next((item for item in store.list_wakewords() if item["id"] == wakeword_id), None)
+        if project is None:
+            raise ValueError("Wakeword-Projekt nicht gefunden")
+        texts = (
+            [project.get("phrase", ""), *project.get("variants", [])]
+            if sample_kind == "positive"
+            else project.get("negative_phrases", [])
+        )
+        texts = [text.strip() for text in texts if isinstance(text, str) and text.strip()]
+        if not texts:
+            raise ValueError("Im Wakeword-Projekt ist keine Phrase hinterlegt")
+        voices = {str(item["id"]): item for item in installed_voices()}
+        total = sum(allocation.values())
+        with GENERATION_JOBS_LOCK:
+            GENERATION_JOBS[job_id].update({"status": "running", "total": total, "completed": 0, "allocation": allocation, "tempo_variation": tempo_variation})
+        completed = 0
+        for voice_id, count in allocation.items():
+            voice = voices[voice_id]
+            plan = build_sample_plan(texts, count, tempo_variation, seed=(seed or 0) + sum(voice_id.encode("utf-8")))
+            for index, sample_plan in enumerate(plan):
+                text = str(sample_plan["text"])
+                length_scale = float(sample_plan["length_scale"])
+                audio = synthesize_wav(text, voice_id, rate=1.0 / length_scale)
+                store.save_sample(
+                    wakeword_id,
+                    sample_kind,
+                    f"{voice_id}-{index + 1}.wav",
+                    audio,
+                    f"{voice['name']} · {index + 1}",
+                    source="generated",
+                    metadata={
+                        "voice_id": voice_id,
+                        "voice_name": voice["name"],
+                        "relative_weight": (relative_weights or {}).get(voice_id, 0),
+                        "transcript": text,
+                        "length_scale": round(length_scale, 3),
+                        "generator": "piper",
+                    },
+                )
+                completed += 1
+                with GENERATION_JOBS_LOCK:
+                    GENERATION_JOBS[job_id]["completed"] = completed
+        with GENERATION_JOBS_LOCK:
+            GENERATION_JOBS[job_id]["status"] = "completed"
+    except Exception as error:
+        LOGGER.exception("Wakeword sample generation failed for %s", wakeword_id)
+        with GENERATION_JOBS_LOCK:
+            job = GENERATION_JOBS.get(job_id)
+            if job is not None:
+                job.update({"status": "failed", "error": str(error)})
+
+
 class RequestHandler(BaseHTTPRequestHandler):
     server_version = "VoxWerk/0.1"
 
@@ -264,6 +382,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             return None
         return payload
 
+    def _wakeword_store(self) -> WakewordStore:
+        return WakewordStore(data_dir())
+
     def do_GET(self) -> None:
         request = urlsplit(self.path)
         if request.path.startswith("/api/") and not self.is_api_client_allowed():
@@ -276,6 +397,40 @@ class RequestHandler(BaseHTTPRequestHandler):
         if request.path == "/api/voices":
             self.send_json({"voices": installed_voices()})
             return
+        if request.path == "/api/wakeword":
+            store = self._wakeword_store()
+            self.send_json({"profiles": store.list_profiles(), "wakewords": store.list_wakewords()})
+            return
+        if request.path.startswith("/api/wakeword/"):
+            parts = request.path.strip("/").split("/")
+            store = self._wakeword_store()
+            try:
+                if len(parts) == 4 and parts[2] == "generation":
+                    with GENERATION_JOBS_LOCK:
+                        job = GENERATION_JOBS.get(parts[3])
+                        if job is None:
+                            self.send_json({"error": "Generierungsauftrag nicht gefunden"}, 404)
+                        else:
+                            self.send_json({"job": dict(job)})
+                    return
+                if len(parts) == 4 and parts[2] == "runs":
+                    self.send_json({"runs": store.list_runs(parts[3])})
+                    return
+                if len(parts) == 4 and parts[2] == "samples":
+                    self.send_json({"samples": store.list_samples(parts[3])})
+                    return
+                if len(parts) == 5 and parts[2] == "audio":
+                    sample_id = parts[4]
+                    sample = next((item for item in store.list_samples(parts[3]) if item["id"] == sample_id), None)
+                    if sample is None:
+                        raise ValueError("Aufnahme nicht gefunden")
+                    audio_path = store._project_dir(parts[3]) / "samples" / sample["kind"] / sample["filename"]
+                    content_types = {".wav": "audio/wav", ".webm": "audio/webm", ".ogg": "audio/ogg", ".mp3": "audio/mpeg", ".flac": "audio/flac"}
+                    self.send_bytes(audio_path.read_bytes(), content_types.get(audio_path.suffix.lower(), "application/octet-stream"))
+                    return
+            except (ValueError, OSError) as error:
+                self.send_json({"error": str(error)}, 404)
+                return
         if request.path == "/api/recordings":
             recording_dir = data_dir() / "recordings"
             recordings = []
@@ -326,6 +481,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not self.is_api_client_allowed():
             self.send_json({"error": "Remote-Zugriff erfordert einen nicht-lokalen --host-Wert beim Start von VoxWerk"}, 403)
             return
+        if request.path.startswith("/api/wakeword/"):
+            self._handle_wakeword_post(request)
+            return
         if request.path not in {"/api/download", "/api/remove", "/api/synthesize"}:
             self.send_json({"error": "Nicht gefunden"}, 404)
             return
@@ -346,6 +504,115 @@ class RequestHandler(BaseHTTPRequestHandler):
         except Exception as error:
             LOGGER.exception("Request failed for %s", request.path)
             self.send_json({"error": f"VoxWerk konnte die Anfrage nicht abschließen: {error}"}, 500)
+
+    def _handle_wakeword_post(self, request) -> None:
+        store = self._wakeword_store()
+        parts = request.path.strip("/").split("/")
+        try:
+            if parts == ["api", "wakeword", "samples", "upload"]:
+                params = parse_qs(request.query)
+                wakeword_id = params.get("wakeword", [""])[0]
+                kind = params.get("kind", [""])[0]
+                filename = params.get("filename", [""])[0]
+                title = params.get("title", [""])[0]
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    raise ValueError("Ungültige Upload-Größe") from None
+                if not 0 < length <= MAX_SAMPLE_BYTES:
+                    self.send_json({"error": "Audio muss zwischen 1 Byte und 40 MB groß sein"}, 413)
+                    return
+                sample = store.save_sample(wakeword_id, kind, filename, self.rfile.read(length), title)
+                self.send_json({"sample": sample}, 201)
+                return
+            payload = self._read_json()
+            if payload is None:
+                return
+            if parts == ["api", "wakeword", "generate"]:
+                wakeword_id = payload.get("wakeword_id")
+                project = next((item for item in store.list_wakewords() if item["id"] == wakeword_id), None)
+                if project is None:
+                    raise ValueError("Wakeword-Projekt nicht gefunden")
+                voices = payload.get("voices")
+                total = payload.get("total_samples")
+                sample_kind = payload.get("kind", "positive")
+                if sample_kind not in {"positive", "negative"}:
+                    raise ValueError("Sampletyp muss positiv oder negativ sein")
+                if not isinstance(voices, dict) or any(not isinstance(key, str) for key in voices):
+                    raise ValueError("Stimmenauswahl ist ungültig")
+                installed = {str(item["id"]): item for item in installed_voices()}
+                if any(voice_id not in installed for voice_id in voices):
+                    raise ValueError("Die Auswahl enthält nicht installierte Stimmen")
+                allocation = allocate_weighted_samples(total, voices)
+                if len(store.list_samples(wakeword_id)) + total > MAX_RECORDS:
+                    raise ValueError("Die maximale Projektgröße von 1000 Samples würde überschritten")
+                tempo_variation = payload.get("tempo_variation", 20)
+                texts = (
+                    [project.get("phrase", ""), *project.get("variants", [])]
+                    if sample_kind == "positive"
+                    else project.get("negative_phrases", [])
+                )
+                build_sample_plan(texts, total, tempo_variation)
+                job_id = uuid.uuid4().hex
+                with GENERATION_JOBS_LOCK:
+                    if any(job.get("wakeword_id") == wakeword_id and job.get("status") in {"queued", "running"} for job in GENERATION_JOBS.values()):
+                        raise ValueError("Für dieses Wakeword läuft bereits eine Samplegenerierung")
+                    for existing_id, existing_job in list(GENERATION_JOBS.items()):
+                        if len(GENERATION_JOBS) < 64:
+                            break
+                        if existing_job.get("status") in {"completed", "failed"}:
+                            GENERATION_JOBS.pop(existing_id, None)
+                    GENERATION_JOBS[job_id] = {
+                        "id": job_id,
+                        "wakeword_id": wakeword_id,
+                        "status": "queued",
+                        "kind": sample_kind,
+                        "completed": 0,
+                        "total": total,
+                        "tempo_variation": tempo_variation,
+                        "allocation": allocation,
+                    }
+                    job = dict(GENERATION_JOBS[job_id])
+                threading.Thread(
+                    target=_run_sample_generation,
+                    args=(job_id, wakeword_id, allocation, sample_kind, tempo_variation, voices, int(job_id[:12], 16)),
+                    daemon=True,
+                ).start()
+                self.send_json({"job": job}, 202)
+            elif parts == ["api", "wakeword", "profiles", "save"]:
+                profile = store.save_profile(payload, payload.get("id"))
+                self.send_json({"profile": profile})
+            elif parts == ["api", "wakeword", "profiles", "delete"]:
+                store.delete_profile(payload.get("id"))
+                self.send_json({"profiles": store.list_profiles()})
+            elif parts == ["api", "wakeword", "save"]:
+                project = store.save_wakeword(payload, payload.get("id"))
+                self.send_json({"wakeword": project})
+            elif parts == ["api", "wakeword", "delete"]:
+                store.delete_wakeword(payload.get("id"))
+                self.send_json({"wakewords": store.list_wakewords()})
+            elif len(parts) == 5 and parts[2] == "samples" and parts[4] == "edit":
+                sample = store.update_sample(parts[3], payload.get("sample_id"), payload)
+                self.send_json({"sample": sample})
+            elif len(parts) == 5 and parts[2] == "samples" and parts[4] == "delete-many":
+                deleted = store.delete_samples(parts[3], payload.get("sample_ids"))
+                self.send_json({"deleted": len(deleted), "samples": store.list_samples(parts[3])})
+            elif len(parts) == 5 and parts[2] == "samples" and parts[4] == "delete":
+                store.delete_sample(parts[3], payload.get("sample_id"))
+                self.send_json({"samples": store.list_samples(parts[3])})
+            elif len(parts) == 5 and parts[2] == "runs" and parts[4] == "create":
+                run = store.create_run(parts[3], payload)
+                self.send_json({"run": run}, 201)
+            elif len(parts) == 6 and parts[2] == "runs" and parts[5] == "delete":
+                store.delete_run(parts[3], parts[4])
+                self.send_json({"runs": store.list_runs(parts[3])})
+            else:
+                self.send_json({"error": "Nicht gefunden"}, 404)
+        except (ValueError, OSError) as error:
+            self.send_json({"error": str(error)}, 400)
+        except Exception as error:
+            LOGGER.exception("Wakeword request failed for %s", request.path)
+            self.send_json({"error": f"VoxWerk konnte die Wakeword-Anfrage nicht abschließen: {error}"}, 500)
 
     def _download_voice(self, payload: dict[str, object]) -> None:
         voice_id = validate_voice_id(payload.get("id"))
@@ -376,17 +643,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             rate = min(1.5, max(0.65, float(payload.get("rate", 1.0))))
         except (TypeError, ValueError):
             rate = 1.0
-        output = io.BytesIO()
-        with SYNTHESIS_LOCK:
-            voice = next((item for item in installed_voices() if item["id"] == voice_id), None)
-            if voice is None:
-                raise ValueError("Stimme ist nicht installiert")
-            from piper import SynthesisConfig
-
-            model = load_voice(str(voice["path"]))
-            with wave.open(output, "wb") as wav_file:
-                model.synthesize_wav(text.strip(), wav_file=wav_file, syn_config=SynthesisConfig(length_scale=1.0 / rate))
-        audio = output.getvalue()
+        voice = next((item for item in installed_voices() if item["id"] == voice_id), None)
+        if voice is None:
+            raise ValueError("Stimme ist nicht installiert")
+        audio = synthesize_wav(text.strip(), voice_id, rate)
         if payload.get("save") is True:
             recording_dir = data_dir() / "recordings"
             recording_dir.mkdir(parents=True, exist_ok=True)

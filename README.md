@@ -9,6 +9,7 @@ VoxWerk is a local-first speech studio for browsing Piper voices, downloading on
 - Remove installed voice models from the library when they are no longer needed.
 - Enter text, adjust speaking rate, preview speech, and save WAV recordings.
 - Select browser audio input and output devices, test the microphone level, and play an output test tone.
+- Create and manage isolated wakeword projects, reusable training profiles, audio samples, and explicit dataset snapshots.
 - Keep models and recordings in the user's data directory; keep device choices in browser-local storage.
 - Run the web interface on loopback by default.
 
@@ -91,9 +92,12 @@ Follow its logs with `journalctl --user -u voxwerk.service -f`. To keep the serv
 
 Open **Stimmen**, filter the catalog, and download a model. Then return to **Studio**, choose the installed model, enter text, and preview or save the generated WAV. Audio devices can be selected and tested in **Einstellungen**. VoxWerk requests microphone access only after an explicit microphone-test or device-discovery action.
 
+Open **Wakewords** to create a training profile and a separate wakeword project. Add positive and negative audio by file or microphone recording, or generate positive and negative Piper samples from their separate phrase lists. The generator has separate start buttons and accepts a total sample count, relative per-voice weights, and speaking-tempo variation, then shows the allocation by voice. It records each clip's voice, weight, text, and tempo. Samples are listed in separate positive and negative groups; select individual clips or all clips within a group to delete them together after confirmation. Edit sample labels and notes, and select samples to create a reviewable run snapshot. Snapshots preserve copies of the selected audio files, sample metadata, wakeword configuration, and profile configuration. They can be inspected and deleted independently. The microWakeWord training environment and model inference are not yet installed or invoked by VoxWerk; a prepared snapshot is not a trained or tested model. Existing data under the separate `wakeword/` project is never imported automatically.
+
 ## Data and privacy
 
 - Voice models and WAV recordings are stored under `${XDG_DATA_HOME:-~/.local/share}/voxwerk`.
+- Wakeword profiles, projects, audio samples, and run snapshots are stored under `${XDG_DATA_HOME:-~/.local/share}/voxwerk/wakeword`.
 - The Piper catalog cache is stored under `${XDG_CACHE_HOME:-~/.cache}/voxwerk`.
 - Audio device selections are stored in the current browser's local storage.
 - Text submitted for speech synthesis is sent to the local VoxWerk server and is not uploaded by VoxWerk to a speech service.
