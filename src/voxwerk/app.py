@@ -27,6 +27,7 @@ from importlib.resources import files
 from .wakeword_data import MAX_RECORDS, MAX_SAMPLE_BYTES, WakewordStore
 from .wakeword_training import TrainingStopped, run_training_pipeline, save_training_workspace, training_environment, validate_training_parameters, _wav_samples
 from .wakeword_testing import list_test_models, score_test_audio, score_test_pcm_frame
+from .storage import data_dir as configured_data_dir, data_directory_info, save_data_directory
 
 
 APP_NAME = "voxwerk"
@@ -60,7 +61,7 @@ def xdg_path(variable: str, fallback: Path) -> Path:
 
 
 def data_dir() -> Path:
-    return xdg_path("XDG_DATA_HOME", user_data_dir())
+    return configured_data_dir()
 
 
 def cache_dir() -> Path:
@@ -472,6 +473,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             environment = training_environment()
             self.send_json({key: value for key, value in environment.items() if key not in {"workspace", "python"}})
             return
+        if request.path == "/api/settings/data-directory":
+            info = data_directory_info()
+            self.send_json({"path": str(info["path"]), "source": info["source"], "locked": info["locked"]})
+            return
         if request.path == "/api/settings/wakeword-workspace":
             import ipaddress
 
@@ -589,6 +594,28 @@ class RequestHandler(BaseHTTPRequestHandler):
             try:
                 environment = save_training_workspace(payload.get("path"))
                 self.send_json({key: environment[key] for key in ("workspace_path", "workspace_source", "workspace_locked", "ready", "message", "datasets")})
+            except (OSError, ValueError) as error:
+                self.send_json({"error": str(error)}, 400)
+            return
+        if request.path == "/api/settings/data-directory":
+            import ipaddress
+
+            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                self.send_json({"error": "Datenordner können nur über localhost geändert werden"}, 403)
+                return
+            payload = self._read_json()
+            if payload is None:
+                return
+            with TRAINING_JOBS_LOCK, GENERATION_JOBS_LOCK:
+                jobs_active = any(job.get("status") in {"queued", "running"} for job in TRAINING_JOBS.values()) or any(
+                    job.get("status") in {"queued", "running"} for job in GENERATION_JOBS.values()
+                )
+            if jobs_active:
+                self.send_json({"error": "Datenordner kann während eines Trainings oder einer Samplegenerierung nicht verschoben werden"}, 409)
+                return
+            try:
+                info = save_data_directory(payload.get("path"))
+                self.send_json({"path": str(info["path"]), "source": info["source"], "locked": info["locked"], "copied": info["copied"]})
             except (OSError, ValueError) as error:
                 self.send_json({"error": str(error)}, 400)
             return

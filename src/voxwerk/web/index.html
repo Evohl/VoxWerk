@@ -152,9 +152,12 @@
     .wakeword-form input, .wakeword-form select, .wakeword-form textarea { width: 100%; min-height: 40px; padding: 9px 11px; color: var(--ink); background: #111a1e; border: 1px solid var(--line); border-radius: 2px; }
     #wakeword-workspace-path { width: 100%; height: 40px; min-height: 40px; padding: 9px 11px; color: var(--ink); background: #111a1e; border: 1px solid var(--line); border-radius: 2px; }
     #wakeword-workspace-path:focus { border-color: var(--acid); box-shadow: 0 0 0 3px rgb(77 225 239 / 14%); outline: 0; }
+    #voxwerk-data-path { width: 100%; height: 40px; min-height: 40px; padding: 9px 11px; color: var(--ink); background: #111a1e; border: 1px solid var(--line); border-radius: 2px; }
+    #voxwerk-data-path:focus { border-color: var(--acid); box-shadow: 0 0 0 3px rgb(77 225 239 / 14%); outline: 0; }
     .wakeword-form textarea { min-height: 78px; resize: vertical; font: inherit; }
     .wakeword-form input[type="checkbox"], .ww-checkbox input[type="checkbox"], .generator-voice input[type="checkbox"] { width: 18px; height: 18px; min-height: 18px; margin: 0; flex: 0 0 18px; accent-color: var(--acid); }
     .ww-section { padding: 20px 0; border-top: 1px solid var(--line); }
+    .ww-section.training-pane { padding-top: 0; border-top: 0; }
     .ww-section:first-child { padding-top: 0; border-top: 0; }
     .ww-row.sample-row { display: grid; grid-template-columns: 22px minmax(160px, 1fr) minmax(0, 1.3fr) auto; grid-template-areas: "select title transcript actions" "secondary secondary secondary secondary"; gap: 7px 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
     .sample-row > .sample-select { grid-area: select; justify-self: center; }
@@ -300,7 +303,14 @@
             <div class="setting"><p class="setting-title">Mikrofon</p><p class="setting-note">Eingabegerät für Mikrofonaufnahmen und künftige Wakeword-Funktionen.</p><label class="label" for="input-device">Eingabegerät</label><select id="input-device"><option value="">Systemstandard</option></select><div class="actions" style="margin-top:12px"><button class="button quiet" id="test-input" type="button"><svg viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="13" rx="4"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3m-4 0h8"/></svg>Mikrofon testen</button><span class="status" id="input-level" role="status" aria-live="polite">Mikrofon geschlossen</span></div></div>
             <div class="setting"><p class="setting-title">Audioausgabe</p><p class="setting-note">Legt fest, über welches Gerät die Vorschau abgespielt wird.</p><label class="label" for="output-device">Ausgabegerät</label><select id="output-device"><option value="">Systemstandard</option></select></div>
             <div class="actions"><button class="button primary" id="test-output" type="button"><svg viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6l-5 4H4zm13-1a5 5 0 0 1 0 6m2-9a9 9 0 0 1 0 12"/></svg>Ausgabe testen</button><span class="status" id="device-status" role="status" aria-live="polite"></span></div>
-            <div class="setting" id="wakeword-workspace-setting">
+            <div class="setting" id="voxwerk-data-setting" style="margin-top:24px">
+              <p class="setting-title">VoxWerk-Nutzerdaten</p>
+              <p class="setting-note">Aufnahmen, Stimmenmodelle, Wakeword-Projekte und Trainingsläufe mit Features, Modellen und Logs. Beim Umstellen werden vorhandene Daten kopiert; der bisherige Ordner bleibt als Sicherung erhalten. Zielordner muss leer sein.</p>
+              <label class="label" for="voxwerk-data-path">Datenordner</label>
+              <input id="voxwerk-data-path" type="text" inputmode="text" autocomplete="off" spellcheck="false" placeholder="/mnt/daten/voxwerk">
+              <div class="actions" style="margin-top:12px"><button class="button quiet" id="save-voxwerk-data-path" type="button">Datenordner verschieben</button><span class="status" id="voxwerk-data-status" role="status" aria-live="polite"></span></div>
+            </div>
+            <div class="setting" id="wakeword-workspace-setting" style="margin-top:24px">
               <p class="setting-title">Wakeword-Trainingsdaten</p>
               <p class="setting-note">Ordner des microWakeWord-Projekts mit Python-Umgebung, Modellen und Trainingsdatensätzen.</p>
               <label class="label" for="wakeword-workspace-path">Arbeitsordner</label>
@@ -475,6 +485,7 @@
       if (view === 'wakeword') loadWakewordData().catch(showWakewordError);
       if (view === 'settings') {
         enumerateDevices(false).catch(error => { document.querySelector('#device-status').textContent = error.message; });
+        loadVoxWerkDataDirectory().catch(error => { document.querySelector('#voxwerk-data-status').textContent = error.message; });
         loadWakewordWorkspaceSetting().catch(error => { document.querySelector('#wakeword-workspace-status').textContent = error.message; });
       }
     }
@@ -1142,7 +1153,7 @@
       detail.replaceChildren();
       const projectPane = document.createElement('div');
       const trainingPane = document.createElement('section');
-      trainingPane.className = 'ww-section';
+      trainingPane.className = 'ww-section training-pane';
       projectPane.className = activeWakewordTab === 'wakewords' ? '' : 'hidden';
       trainingPane.classList.toggle('hidden', activeWakewordTab !== 'training');
       detail.append(projectPane, trainingPane);
@@ -1822,6 +1833,47 @@
       const readiness = data.ready ? ' Trainingsumgebung bereit.' : ` ${data.message || 'Trainingsumgebung unvollständig.'}`;
       document.querySelector('#wakeword-workspace-status').textContent = `${sourceLabel}${readiness}`;
     }
+
+    async function loadVoxWerkDataDirectory() {
+      const response = await fetch('/api/settings/data-directory');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Datenordner konnte nicht gelesen werden.');
+      document.querySelector('#voxwerk-data-path').value = data.path || '';
+      document.querySelector('#voxwerk-data-path').disabled = data.locked;
+      document.querySelector('#save-voxwerk-data-path').disabled = data.locked;
+      const sourceLabel = data.source === 'environment'
+        ? 'VOXWERK_DATA_DIR überschreibt diesen Ordner.'
+        : data.source === 'settings'
+          ? 'Gespeicherter Datenordner.'
+          : 'Standardordner im Benutzerprofil.';
+      document.querySelector('#voxwerk-data-status').textContent = sourceLabel;
+    }
+
+    document.querySelector('#save-voxwerk-data-path').addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const status = document.querySelector('#voxwerk-data-status');
+      const path = document.querySelector('#voxwerk-data-path').value;
+      if (!confirm('Vorhandene VoxWerk-Nutzerdaten in den ausgewählten leeren Ordner kopieren? Der bisherige Ordner bleibt unverändert erhalten.')) return;
+      button.disabled = true;
+      status.textContent = 'Daten werden kopiert. Bei vielen Aufnahmen oder Trainingsläufen kann das dauern …';
+      try {
+        const response = await fetch('/api/settings/data-directory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Datenordner konnte nicht umgestellt werden.');
+        document.querySelector('#voxwerk-data-path').value = data.path;
+        status.textContent = data.copied
+          ? 'Daten kopiert und umgestellt. Der bisherige Ordner bleibt als Sicherung erhalten.'
+          : 'Datenordner gespeichert.';
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
 
     document.querySelector('#save-wakeword-workspace').addEventListener('click', async event => {
       const button = event.currentTarget;

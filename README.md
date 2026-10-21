@@ -10,6 +10,7 @@ VoxWerk is a local-first speech studio for browsing Piper voices, downloading on
 - Enter text, adjust speaking rate, preview speech, and save WAV recordings.
 - Select browser audio input and output devices, test the microphone level, and play an output test tone.
 - Choose the microWakeWord training workspace in Settings; the selected workspace is shared by training and finished-model testing.
+- Move all VoxWerk-created user data to a separate data directory from Settings; source data is copied and retained as a backup.
 - Create and manage isolated wakeword projects, reusable training profiles, audio samples, explicit dataset snapshots, and local microWakeWord training runs.
 - Test finished wakeword TFLite models with microphone clips, audio files, or a fast live-microphone score; test recordings are not retained.
 - Live scoring keeps a continuous 16-kHz stream and persistent microWakeWord state, with the ESPHome model stride, five-score window, and one-second warm-up. The speaker's separate VAD gate is not reproduced.
@@ -104,6 +105,7 @@ Open **Wakewords** to create a training profile and a separate wakeword project.
 - The Piper catalog cache is stored under `${XDG_CACHE_HOME:-~/.cache}/voxwerk`.
 - Audio device selections are stored in the current browser's local storage.
 - The selected wakeword workspace is stored in `${XDG_DATA_HOME:-~/.local/share}/voxwerk/wakeword_training.json`; `VOXWERK_WAKEWORD_DIR` takes precedence and locks the Settings field.
+- The VoxWerk data directory defaults to `${XDG_DATA_HOME:-~/.local/share}/voxwerk` and can be moved with **Einstellungen → VoxWerk-Nutzerdaten**. The selected path is stored in `${XDG_CONFIG_HOME:-~/.config}/voxwerk/settings.json`; `VOXWERK_DATA_DIR` takes precedence and locks the setting. Moving copies app-managed recordings, voice models, wakeword projects, snapshots, generated features, checkpoints, models, and logs, leaving the source intact. The separate microWakeWord workspace and its fixed example/negative datasets are not moved.
 - Text submitted for speech synthesis is sent to the local VoxWerk server and is not uploaded by VoxWerk to a speech service.
 - Catalog browsing and model downloads contact Hugging Face at `rhasspy/piper-voices`.
 - The catalog and selected model files are checked against catalog metadata before downloaded files are activated.
