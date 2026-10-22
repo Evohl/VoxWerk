@@ -25,7 +25,7 @@ class TrainingStopped(Exception):
 
 
 def wakeword_package_dir() -> Path:
-    return Path.home() / ".venvs" / "wakeword"
+    return Path.home() / ".venv" / "wakeword"
 
 
 def training_environment() -> dict[str, Any]:
@@ -33,7 +33,7 @@ def training_environment() -> dict[str, Any]:
     root = (Path(configured_root).expanduser() if configured_root else wakeword_package_dir()).resolve()
     configured_python = os.environ.get("VOXWERK_WAKEWORD_PYTHON")
     if configured_python:
-        python = Path(configured_python).expanduser().resolve()
+        python = Path(configured_python).expanduser().absolute()
     else:
         candidates = (root / "bin" / "python", root / ".venv" / "bin" / "python", root / "Scripts" / "python.exe", root / ".venv" / "Scripts" / "python.exe")
         python = next((candidate for candidate in candidates if candidate.is_file()), candidates[0])

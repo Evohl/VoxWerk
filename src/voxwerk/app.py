@@ -872,6 +872,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         run_dir = store._project_dir(str(wakeword_id)) / "runs" / run["id"]
         _wav_samples(run_dir, run)
 
+        LOGGER.info(
+            "Wakeword-Training startet: %s, Run %s, %s Schritte",
+            project["name"], run["id"], parameters["training_steps"],
+        )
         training = {
             "stage": "Wartet auf Start",
             "progress": 0,
@@ -943,6 +947,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: localhost only)")
     parser.add_argument("--port", type=int, default=8765)
@@ -958,5 +963,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     main()

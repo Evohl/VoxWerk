@@ -105,7 +105,7 @@ class TrainingEnvironmentTests(unittest.TestCase):
     def test_package_is_installed_at_a_fixed_location_under_home(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
-            package = home / ".venvs" / "wakeword"
+            package = home / ".venv" / "wakeword"
             for relative_path in (
                 "bin/python",
                 "scripts/generate_positive_features.py",
@@ -135,6 +135,19 @@ class TrainingEnvironmentTests(unittest.TestCase):
         self.assertEqual(environment["workspace"], Path(directory).resolve())
         self.assertEqual(environment["package_source"], "environment")
         self.assertTrue(environment["package_locked"])
+
+    def test_python_override_preserves_virtual_environment_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            interpreter = root / "base" / "python"
+            interpreter.parent.mkdir()
+            interpreter.touch()
+            venv_python = root / "venv" / "bin" / "python"
+            venv_python.parent.mkdir(parents=True)
+            venv_python.symlink_to(interpreter)
+            with patch.dict("os.environ", {"VOXWERK_WAKEWORD_DIR": directory, "VOXWERK_WAKEWORD_PYTHON": str(venv_python)}, clear=False):
+                environment = training_environment()
+        self.assertEqual(environment["python"], venv_python)
 
 
 class TrainingSnapshotTests(unittest.TestCase):
@@ -241,6 +254,7 @@ class TrainingSnapshotTests(unittest.TestCase):
             with (
                 patch("voxwerk.app.training_environment", return_value=environment),
                 patch("voxwerk.app.threading.Thread") as thread,
+                self.assertLogs("voxwerk", level="INFO") as captured,
             ):
                 RequestHandler._start_wakeword_training(response, store, {"wakeword_id": project["id"], "run_id": run["id"]})
 
@@ -250,6 +264,7 @@ class TrainingSnapshotTests(unittest.TestCase):
             self.assertEqual(len(updated_runs), 1)
             self.assertEqual(updated_runs[0]["status"], "queued")
             thread.return_value.start.assert_called_once()
+            self.assertIn("Wakeword-Training startet", captured.output[0])
             with TRAINING_JOBS_LOCK:
                 TRAINING_JOBS.pop(run["id"], None)
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -29,6 +30,7 @@ INSTALL_MARKER = ".voxwerk-wakeword-install.json"
 INSTALL_LOCK = threading.RLock()
 INSTALL_JOB: dict[str, Any] | None = None
 INSTALL_CANCEL: threading.Event | None = None
+LOGGER = logging.getLogger("voxwerk.wakeword_install")
 
 
 class InstallCancelled(Exception):
@@ -64,6 +66,7 @@ def _check_cancel(cancel: threading.Event) -> None:
 
 
 def _run_command(command: list[str], cwd: Path, log_path: Path, stage: str, cancel: threading.Event, job_id: str) -> None:
+    LOGGER.info("Wakeword-Paket: %s", stage)
     _set_job(job_id, stage=stage, progress=0, message=stage)
     with log_path.open("a", encoding="utf-8") as log:
         log.write("\n$ " + " ".join(command) + "\n")
@@ -205,6 +208,7 @@ def _install_package(job_id: str, cancel: threading.Event) -> None:
 
     for index, (archive_name, dataset_name) in enumerate(DATASET_ARCHIVES):
         _check_cancel(cancel)
+        LOGGER.info("Wakeword-Datensatz: %s", dataset_name)
         _download_dataset(archive_name, dataset_name, path, cancel, job_id, index)
 
     ambient_data = path / "negative_datasets" / "dinner_party_eval"
@@ -236,13 +240,18 @@ def start_install() -> dict[str, Any]:
         }
         cancel = INSTALL_CANCEL
 
+    LOGGER.info("Wakeword-Paket-Installation/Update gestartet: %s", path)
+
     def worker() -> None:
         try:
             _install_package(job_id, cancel)
+            LOGGER.info("Wakeword-Paket-Installation/Update abgeschlossen: %s", path)
         except InstallCancelled as error:
             _set_job(job_id, status="cancelled", stage="Abgebrochen", message=str(error), error="")
+            LOGGER.info("Wakeword-Paket-Installation/Update abgebrochen: %s", path)
         except Exception as error:
             _set_job(job_id, status="failed", stage="Fehlgeschlagen", message=str(error), error=str(error))
+            LOGGER.error("Wakeword-Paket-Installation/Update fehlgeschlagen: %s: %s", path, error)
 
     threading.Thread(target=worker, name="voxwerk-wakeword-install", daemon=True).start()
     return get_install_job(job_id) or {}
