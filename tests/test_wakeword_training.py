@@ -268,6 +268,69 @@ class TrainingSnapshotTests(unittest.TestCase):
             with TRAINING_JOBS_LOCK:
                 TRAINING_JOBS.pop(run["id"], None)
 
+    def test_failed_snapshot_can_be_retried_and_partial_artifacts_are_removed(self) -> None:
+        class Response:
+            def send_json(self, payload: dict[str, object], status: int = 200) -> None:
+                self.payload = payload
+                self.status = status
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = WakewordStore(Path(directory))
+            profile = store.save_profile({"name": "microWakeWord", "engine": "microwakeword"})
+            project = store.save_wakeword({"name": "Hey Nova", "phrase": "Hey Nova", "profile_id": profile["id"]})
+            sample_ids = []
+            for kind in ("positive", "negative"):
+                for index in range(5):
+                    audio_path = Path(directory) / f"{kind}-{index}.wav"
+                    with wave.open(str(audio_path), "wb") as audio:
+                        audio.setnchannels(1)
+                        audio.setsampwidth(2)
+                        audio.setframerate(16000)
+                        audio.writeframes(b"\0\0" * 9600)
+                    sample = store.save_sample(project["id"], kind, audio_path.name, audio_path.read_bytes())
+                    sample_ids.append(sample["id"])
+            run = store.create_run(project["id"], {"sample_ids": sample_ids})
+            run = store.update_run(project["id"], run["id"], status="failed", training={"stage": "Training fehlgeschlagen", "error": "torchcodec fehlt"})
+            run_dir = store._project_dir(project["id"]) / "runs" / run["id"]
+            partial_feature = run_dir / "training-work" / "features" / "positive" / "partial.bin"
+            partial_feature.parent.mkdir(parents=True)
+            partial_feature.write_bytes(b"incomplete")
+            partial_model = run_dir / "model" / "checkpoint.bin"
+            partial_model.parent.mkdir()
+            partial_model.write_bytes(b"incomplete")
+            config_path = run_dir / "training_config.yaml"
+            config_path.write_text("partial", encoding="utf-8")
+            log_path = run_dir / "training.log"
+            log_path.write_text("previous failure", encoding="utf-8")
+            environment = {
+                "ready": True,
+                "message": "",
+                "workspace": Path(directory),
+                "python": Path(directory) / "python",
+                "datasets": [{"id": dataset_id, "available": True} for dataset_id in ("speech", "dinner_party", "no_speech", "dinner_party_eval")],
+            }
+            response = Response()
+            try:
+                with (
+                    patch("voxwerk.app.training_environment", return_value=environment),
+                    patch("voxwerk.app.threading.Thread") as thread,
+                ):
+                    RequestHandler._start_wakeword_training(response, store, {"wakeword_id": project["id"], "run_id": run["id"]})
+
+                retried = store.list_runs(project["id"])[0]
+                self.assertEqual(response.status, 202)
+                self.assertEqual(retried["status"], "queued")
+                self.assertIsNone(retried["training"]["error"])
+                self.assertFalse((run_dir / "training-work").exists())
+                self.assertFalse((run_dir / "model").exists())
+                self.assertFalse(config_path.exists())
+                self.assertEqual(log_path.read_text(encoding="utf-8"), "previous failure")
+                thread.return_value.start.assert_called_once()
+            finally:
+                with TRAINING_JOBS_LOCK:
+                    TRAINING_JOBS.pop(run["id"], None)
+                    TRAINING_STOP_EVENTS.pop(run["id"], None)
+
     def test_stopped_training_persists_stopped_run_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = WakewordStore(Path(directory))

@@ -1547,10 +1547,10 @@
           stopButton.disabled = false;
         }
       });
-      for (const run of runsData.runs.filter(item => item.status === 'prepared' && !item.training)) {
+      for (const run of runsData.runs.filter(item => (item.status === 'prepared' && !item.training) || ['failed', 'stopped'].includes(item.status))) {
         const option = document.createElement('option');
         option.value = run.id;
-        option.textContent = `${run.id} · ${run.samples.length} Samples`;
+        option.textContent = `${run.id} · ${run.samples.length} Samples${['failed', 'stopped'].includes(run.status) ? ' · erneut starten' : ''}`;
         snapshotSelect.append(option);
       }
       const datasetInputs = trainingForm.querySelector('#training-datasets');

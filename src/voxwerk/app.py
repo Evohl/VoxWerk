@@ -877,8 +877,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         run = next((item for item in store.list_runs(str(wakeword_id)) if item["id"] == run_id), None)
         if run is None:
             raise ValueError("Datensatz-Snapshot nicht gefunden")
-        if run.get("status") != "prepared" or run.get("training"):
-            raise ValueError("Training kann nur aus einem vorbereiteten Snapshot gestartet werden")
+        retrying = run.get("status") in {"failed", "stopped"}
+        if not (run.get("status") == "prepared" and not run.get("training")) and not retrying:
+            raise ValueError("Training kann nur aus einem vorbereiteten, fehlgeschlagenen oder gestoppten Snapshot gestartet werden")
         profile = run.get("profile")
         if profile is None or profile.get("engine") != "microwakeword":
             raise ValueError("Das Snapshot-Profil muss die Engine microWakeWord verwenden")
@@ -905,10 +906,21 @@ class RequestHandler(BaseHTTPRequestHandler):
             "log_file": "training.log",
             "model_directory": "model",
             "created_at": int(time.time()),
+            "error": None,
+            "finished_at": None,
         }
         with TRAINING_JOBS_LOCK:
             if any(job.get("status") in {"queued", "running"} for job in TRAINING_JOBS.values()):
                     raise ValueError("Es läuft bereits ein microWakeWord-Training")
+            if retrying:
+                for artifact in (run_dir / "training-work", run_dir / "model"):
+                    if artifact.is_symlink():
+                        artifact.unlink()
+                    elif artifact.is_dir():
+                        shutil.rmtree(artifact)
+                config_path = run_dir / "training_config.yaml"
+                if config_path.is_symlink() or config_path.is_file():
+                    config_path.unlink()
             for job_id, job in list(TRAINING_JOBS.items()):
                 if len(TRAINING_JOBS) < 32:
                     break
