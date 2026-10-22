@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import io
 import tempfile
 import threading
 import unittest
+import wave
 from pathlib import Path
 from unittest.mock import patch
 
@@ -25,6 +27,16 @@ class WakewordStoreTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
+
+    @staticmethod
+    def make_wav(duration: float) -> bytes:
+        output = io.BytesIO()
+        with wave.open(output, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(16000)
+            wav_file.writeframes(b"\x00\x00" * round(16000 * duration))
+        return output.getvalue()
 
     def test_profile_can_be_edited_but_not_deleted_while_in_use(self) -> None:
         updated = self.store.save_profile({"name": "ESP32 Updated", "sample_rate": 22050}, self.profile["id"])
@@ -135,7 +147,7 @@ class WakewordStoreTests(unittest.TestCase):
             with (
                 patch("voxwerk.app.data_dir", return_value=Path(self.temporary_directory.name)),
                 patch("voxwerk.app.installed_voices", return_value=[{"id": "voice-a", "name": "Voice A", "path": "/voice-a.onnx"}]),
-                patch("voxwerk.app.synthesize_wav", return_value=b"generated wav"),
+                patch("voxwerk.app.synthesize_wav", return_value=self.make_wav(1.0)),
             ):
                 _run_sample_generation("test-job", self.project["id"], {"voice-a": 2}, tempo_variation=10, relative_weights={"voice-a": 75}, seed=24)
             samples = self.store.list_samples(self.project["id"])
@@ -169,6 +181,31 @@ class WakewordStoreTests(unittest.TestCase):
         finally:
             with GENERATION_JOBS_LOCK:
                 GENERATION_JOBS.pop("negative-job", None)
+
+    def test_positive_sample_generation_adjusts_duration_into_training_window(self) -> None:
+        with GENERATION_JOBS_LOCK:
+            GENERATION_JOBS["duration-job"] = {"id": "duration-job", "status": "queued", "completed": 0, "total": 1}
+        durations = iter((0.4, 0.55))
+        synthesized_scales: list[float] = []
+
+        def synthesize(text: str, voice_id: str, rate: float = 1.0) -> bytes:
+            synthesized_scales.append(1.0 / rate)
+            return self.make_wav(next(durations))
+
+        try:
+            with (
+                patch("voxwerk.app.data_dir", return_value=Path(self.temporary_directory.name)),
+                patch("voxwerk.app.installed_voices", return_value=[{"id": "voice-a", "name": "Voice A", "path": "/voice-a.onnx"}]),
+                patch("voxwerk.app.synthesize_wav", side_effect=synthesize),
+            ):
+                _run_sample_generation("duration-job", self.project["id"], {"voice-a": 1}, tempo_variation=0)
+            sample = self.store.list_samples(self.project["id"])[0]
+            self.assertEqual(synthesized_scales, [1.0, 1.375])
+            self.assertEqual(sample["length_scale"], 1.375)
+            self.assertEqual(GENERATION_JOBS["duration-job"]["status"], "completed")
+        finally:
+            with GENERATION_JOBS_LOCK:
+                GENERATION_JOBS.pop("duration-job", None)
 
     def test_sample_generator_does_not_recreate_deleted_project(self) -> None:
         with GENERATION_JOBS_LOCK:

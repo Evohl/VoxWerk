@@ -348,6 +348,25 @@ def build_sample_plan(texts: list[str], total: int, tempo_variation: int = 20, s
     return plan
 
 
+def _synthesize_positive_sample(text: str, voice_id: str, length_scale: float) -> tuple[bytes, float]:
+    minimum_duration, maximum_duration = 0.5, 1.5
+    minimum_scale, maximum_scale = 0.5, 3.0
+    for _ in range(6):
+        audio = synthesize_wav(text, voice_id, rate=1.0 / length_scale)
+        try:
+            with wave.open(io.BytesIO(audio), "rb") as wav_file:
+                duration = wav_file.getnframes() / wav_file.getframerate()
+        except (wave.Error, ZeroDivisionError):
+            raise ValueError("Piper hat kein gültiges WAV-Sample erzeugt") from None
+        if duration <= 0:
+            raise ValueError("Piper hat ein leeres WAV-Sample erzeugt")
+        if minimum_duration < duration < maximum_duration:
+            return audio, length_scale
+        target_duration = 0.55 if duration <= minimum_duration else 1.45
+        length_scale = min(maximum_scale, max(minimum_scale, length_scale * target_duration / duration))
+    raise ValueError(f"Piper-Sample für '{text}' lässt sich nicht auf 0,5–1,5 Sekunden anpassen")
+
+
 def _run_sample_generation(
     job_id: str,
     wakeword_id: str,
@@ -381,7 +400,10 @@ def _run_sample_generation(
             for index, sample_plan in enumerate(plan):
                 text = str(sample_plan["text"])
                 length_scale = float(sample_plan["length_scale"])
-                audio = synthesize_wav(text, voice_id, rate=1.0 / length_scale)
+                if sample_kind == "positive":
+                    audio, length_scale = _synthesize_positive_sample(text, voice_id, length_scale)
+                else:
+                    audio = synthesize_wav(text, voice_id, rate=1.0 / length_scale)
                 store.save_sample(
                     wakeword_id,
                     sample_kind,
