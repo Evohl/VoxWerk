@@ -86,6 +86,19 @@ def _api_client_allowed(client_address: str, bind_address: str) -> bool:
     return client_ip.is_loopback or not bind_ip.is_loopback
 
 
+def _wakeword_test_client_allowed(client_address: str, bind_address: str) -> bool:
+    import ipaddress
+
+    try:
+        client_ip = ipaddress.ip_address(client_address)
+        bind_ip = ipaddress.ip_address(bind_address)
+    except ValueError:
+        return False
+    if client_ip.is_loopback:
+        return True
+    return client_ip.is_private and not bind_ip.is_loopback and (bind_ip.is_private or bind_ip.is_unspecified)
+
+
 def _run_wakeword_training(
     wakeword_id: str,
     run_id: str,
@@ -509,10 +522,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.send_json(check_wakeword_integration())
             return
         if request.path == "/api/wakeword/test/models":
-            import ipaddress
-
-            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
-                self.send_json({"error": "Wakeword-Tests sind nur über localhost verfügbar"}, 403)
+            if not _wakeword_test_client_allowed(self.client_address[0], self.server.server_address[0]):
+                self.send_json({"error": "Wakeword-Tests benötigen eine private Client-IP und eine private oder unspecified Bind-Adresse"}, 403)
                 return
             environment = training_environment()
             try:
@@ -647,10 +658,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": str(error)}, 400)
             return
         if request.path == "/api/wakeword/test/score":
-            import ipaddress
-
-            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
-                self.send_json({"error": "Wakeword-Tests sind nur über localhost verfügbar"}, 403)
+            if not _wakeword_test_client_allowed(self.client_address[0], self.server.server_address[0]):
+                self.send_json({"error": "Wakeword-Tests benötigen eine private Client-IP und eine private oder unspecified Bind-Adresse"}, 403)
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -685,10 +694,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": str(error)}, 500)
             return
         if request.path == "/api/wakeword/test/stream":
-            import ipaddress
-
-            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
-                self.send_json({"error": "Wakeword-Tests sind nur über localhost verfügbar"}, 403)
+            if not _wakeword_test_client_allowed(self.client_address[0], self.server.server_address[0]):
+                self.send_json({"error": "Wakeword-Tests benötigen eine private Client-IP und eine private oder unspecified Bind-Adresse"}, 403)
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))

@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from voxwerk.app import _api_client_allowed, _download_file, allocate_weighted_samples, build_sample_plan, catalog_entries, filter_catalog, language_display_name, remove_voice, validate_voice_id
+from voxwerk.app import _api_client_allowed, _download_file, _wakeword_test_client_allowed, allocate_weighted_samples, build_sample_plan, catalog_entries, filter_catalog, language_display_name, remove_voice, validate_voice_id
 
 
 class VoiceCatalogTests(unittest.TestCase):
@@ -88,6 +88,16 @@ class ApiAccessTests(unittest.TestCase):
 
     def test_invalid_addresses_are_rejected(self) -> None:
         self.assertFalse(_api_client_allowed("not-an-ip", "0.0.0.0"))
+
+    def test_wakeword_tests_allow_private_lan_clients_with_explicit_bind(self) -> None:
+        self.assertTrue(_wakeword_test_client_allowed("10.10.0.42", "0.0.0.0"))
+        self.assertTrue(_wakeword_test_client_allowed("192.168.1.22", "192.168.1.10"))
+        self.assertTrue(_wakeword_test_client_allowed("127.0.0.1", "127.0.0.1"))
+
+    def test_wakeword_tests_reject_public_clients_and_loopback_bind(self) -> None:
+        self.assertFalse(_wakeword_test_client_allowed("8.8.8.8", "0.0.0.0"))
+        self.assertFalse(_wakeword_test_client_allowed("10.10.0.42", "127.0.0.1"))
+        self.assertFalse(_wakeword_test_client_allowed("not-an-ip", "0.0.0.0"))
 
 
 class SampleAllocationTests(unittest.TestCase):
