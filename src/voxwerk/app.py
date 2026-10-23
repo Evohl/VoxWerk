@@ -361,8 +361,13 @@ def build_sample_plan(texts: list[str], total: int, tempo_variation: int = 20, s
     return plan
 
 
-def _synthesize_positive_sample(text: str, voice_id: str, length_scale: float) -> tuple[bytes, float]:
-    minimum_duration, maximum_duration = 0.5, 1.5
+def _synthesize_sample_in_duration_range(
+    text: str,
+    voice_id: str,
+    length_scale: float,
+    minimum_duration: float,
+    maximum_duration: float,
+) -> tuple[bytes, float]:
     minimum_scale, maximum_scale = 0.5, 3.0
     for _ in range(6):
         audio = synthesize_wav(text, voice_id, rate=1.0 / length_scale)
@@ -375,9 +380,21 @@ def _synthesize_positive_sample(text: str, voice_id: str, length_scale: float) -
             raise ValueError("Piper hat ein leeres WAV-Sample erzeugt")
         if minimum_duration < duration < maximum_duration:
             return audio, length_scale
-        target_duration = 0.55 if duration <= minimum_duration else 1.45
+        margin = (maximum_duration - minimum_duration) * 0.05
+        target_duration = minimum_duration + margin if duration <= minimum_duration else maximum_duration - margin
         length_scale = min(maximum_scale, max(minimum_scale, length_scale * target_duration / duration))
-    raise ValueError(f"Piper-Sample für '{text}' lässt sich nicht auf 0,5–1,5 Sekunden anpassen")
+    raise ValueError(
+        f"Piper-Sample für '{text}' lässt sich nicht auf "
+        f"{minimum_duration:.1f}–{maximum_duration:.1f} Sekunden anpassen"
+    )
+
+
+def _synthesize_positive_sample(text: str, voice_id: str, length_scale: float) -> tuple[bytes, float]:
+    return _synthesize_sample_in_duration_range(text, voice_id, length_scale, 0.5, 1.5)
+
+
+def _synthesize_negative_sample(text: str, voice_id: str, length_scale: float) -> tuple[bytes, float]:
+    return _synthesize_sample_in_duration_range(text, voice_id, length_scale, 0.3, 3.0)
 
 
 def _run_sample_generation(
@@ -416,7 +433,7 @@ def _run_sample_generation(
                 if sample_kind == "positive":
                     audio, length_scale = _synthesize_positive_sample(text, voice_id, length_scale)
                 else:
-                    audio = synthesize_wav(text, voice_id, rate=1.0 / length_scale)
+                    audio, length_scale = _synthesize_negative_sample(text, voice_id, length_scale)
                 store.save_sample(
                     wakeword_id,
                     sample_kind,

@@ -170,7 +170,7 @@ class WakewordStoreTests(unittest.TestCase):
             with (
                 patch("voxwerk.app.data_dir", return_value=Path(self.temporary_directory.name)),
                 patch("voxwerk.app.installed_voices", return_value=[{"id": "voice-a", "name": "Voice A", "path": "/voice-a.onnx"}]),
-                patch("voxwerk.app.synthesize_wav", return_value=b"generated wav"),
+                patch("voxwerk.app.synthesize_wav", return_value=self.make_wav(1.0)),
             ):
                 _run_sample_generation("negative-job", self.project["id"], {"voice-a": 2}, sample_kind="negative", tempo_variation=0)
             samples = self.store.list_samples(self.project["id"])
@@ -206,6 +206,31 @@ class WakewordStoreTests(unittest.TestCase):
         finally:
             with GENERATION_JOBS_LOCK:
                 GENERATION_JOBS.pop("duration-job", None)
+
+    def test_negative_sample_generation_adjusts_duration_into_training_window(self) -> None:
+        with GENERATION_JOBS_LOCK:
+            GENERATION_JOBS["negative-duration-job"] = {"id": "negative-duration-job", "status": "queued", "completed": 0, "total": 1}
+        durations = iter((0.2, 0.35))
+        synthesized_scales: list[float] = []
+
+        def synthesize(text: str, voice_id: str, rate: float = 1.0) -> bytes:
+            synthesized_scales.append(1.0 / rate)
+            return self.make_wav(next(durations))
+
+        try:
+            with (
+                patch("voxwerk.app.data_dir", return_value=Path(self.temporary_directory.name)),
+                patch("voxwerk.app.installed_voices", return_value=[{"id": "voice-a", "name": "Voice A", "path": "/voice-a.onnx"}]),
+                patch("voxwerk.app.synthesize_wav", side_effect=synthesize),
+            ):
+                _run_sample_generation("negative-duration-job", self.project["id"], {"voice-a": 1}, sample_kind="negative", tempo_variation=0)
+            sample = self.store.list_samples(self.project["id"])[0]
+            self.assertEqual(synthesized_scales, [1.0, 2.175])
+            self.assertEqual(sample["length_scale"], 2.175)
+            self.assertEqual(GENERATION_JOBS["negative-duration-job"]["status"], "completed")
+        finally:
+            with GENERATION_JOBS_LOCK:
+                GENERATION_JOBS.pop("negative-duration-job", None)
 
     def test_sample_generator_does_not_recreate_deleted_project(self) -> None:
         with GENERATION_JOBS_LOCK:
