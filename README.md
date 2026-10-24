@@ -12,6 +12,7 @@ VoxWerk is a local-first speech studio for browsing Piper voices, downloading on
 - Install the wakeword package (microWakeWord, its isolated Python environment, and fixed training datasets) from Settings into `~/.venv/wakeword`; the location is fixed.
 - Choose the working directory for recordings, voice models, wakeword projects, samples, and training runs in Settings; the default is `~/.local/share/voxwerk` and existing data is copied, with the source kept as a backup.
 - Create and manage isolated wakeword projects, reusable training profiles, audio samples, explicit dataset snapshots, and local microWakeWord training runs.
+- Download TFLite models and matching manifests from completed VoxWerk wakeword runs as ZIP archives; models are never flashed automatically.
 - Test finished wakeword TFLite models with microphone clips, audio files, or a fast live-microphone score; test recordings are not retained.
 - Live scoring keeps a continuous 16-kHz stream and persistent microWakeWord state, with the ESPHome model stride, five-score window, and one-second warm-up. The speaker's separate VAD gate is not reproduced.
 - Keep models and recordings in the user's data directory; keep device choices in browser-local storage.
@@ -52,6 +53,14 @@ voxwerk --port 8766
 ```
 
 The server also accepts `--host`. Binding to a non-loopback address enables the API for remote browsers and exposes the interface without authentication to other machines. Do this only on a trusted network and with appropriate network controls. For example, `voxwerk --host 0.0.0.0` listens on all interfaces; use a specific private interface address when possible.
+
+Browser microphone access over a LAN requires HTTPS with a certificate trusted by the client device. Generate or obtain a certificate for the VoxWerk host, then start the server with both files:
+
+```sh
+voxwerk --host 0.0.0.0 --tls-cert /path/to/cert.pem --tls-key /path/to/key.pem
+```
+
+Open `https://<host-address>:8765` from the client. Plain HTTP still works for non-microphone features, but browsers block microphone access outside secure contexts (with localhost as the standard exception). A self-signed certificate must be explicitly trusted on each client device.
 
 ### Run as a systemd user service
 

@@ -11,11 +11,13 @@ import os
 import random
 import re
 import shutil
+import ssl
 import threading
 import time
 import unicodedata
 import uuid
 import wave
+import zipfile
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
@@ -397,6 +399,44 @@ def _synthesize_negative_sample(text: str, voice_id: str, length_scale: float) -
     return _synthesize_sample_in_duration_range(text, voice_id, length_scale, 0.3, 3.0)
 
 
+def _wakeword_run_export(store: WakewordStore, wakeword_id: str, run_id: str) -> tuple[bytes, str]:
+    project = next((item for item in store.list_wakewords() if item["id"] == wakeword_id), None)
+    if project is None:
+        raise ValueError("Wakeword nicht gefunden")
+    run = next((item for item in store.list_runs(wakeword_id) if item["id"] == run_id), None)
+    if run is None:
+        raise ValueError("Trainingslauf nicht gefunden")
+    if run.get("status") != "completed":
+        raise ValueError("Nur abgeschlossene Trainingsläufe können exportiert werden")
+    run_dir = store._project_dir(wakeword_id) / "runs" / run_id
+    runs_root = store._project_dir(wakeword_id) / "runs"
+    if run_dir.is_symlink() or not run_dir.resolve().is_relative_to(runs_root.resolve()):
+        raise ValueError("Trainingslaufpfad ist ungültig")
+    model_directory = PurePosixPath(str(run.get("training", {}).get("model_directory", "model")))
+    if model_directory.is_absolute() or ".." in model_directory.parts:
+        raise ValueError("Ungültiger Modellpfad im Trainingslauf")
+    model_root = run_dir.joinpath(*model_directory.parts)
+    resolved_run = run_dir.resolve()
+    if model_root.is_symlink() or not model_root.is_dir() or not model_root.resolve().is_relative_to(resolved_run):
+        raise ValueError("Modellordner nicht gefunden")
+    models = [
+        path for path in sorted(model_root.rglob("*.tflite"))
+        if path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(model_root.resolve())
+    ]
+    if not models:
+        raise ValueError("Der Trainingslauf enthält kein exportierbares TFLite-Modell")
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as output:
+        for model_path in models:
+            relative_path = model_path.relative_to(model_root)
+            archive_path = PurePosixPath("models", *relative_path.parts).as_posix()
+            output.write(model_path, archive_path)
+            manifest_path = model_path.with_suffix(".json")
+            if manifest_path.is_file() and not manifest_path.is_symlink() and manifest_path.resolve().is_relative_to(model_root.resolve()):
+                output.write(manifest_path, str(PurePosixPath(archive_path).with_suffix(".json")))
+    return archive.getvalue(), f"{wakeword_id}-{run_id}-wakeword.zip"
+
+
 def _run_sample_generation(
     job_id: str,
     wakeword_id: str,
@@ -473,6 +513,16 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_attachment(self, body: bytes, content_type: str, filename: str) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
@@ -563,6 +613,10 @@ class RequestHandler(BaseHTTPRequestHandler):
                     return
                 if len(parts) == 4 and parts[2] == "runs":
                     self.send_json({"runs": store.list_runs(parts[3])})
+                    return
+                if len(parts) == 6 and parts[2] == "runs" and parts[5] == "export":
+                    archive, filename = _wakeword_run_export(store, parts[3], parts[4])
+                    self.send_attachment(archive, "application/zip", filename)
                     return
                 if len(parts) == 4 and parts[2] == "samples":
                     self.send_json({"samples": store.list_samples(parts[3])})
@@ -1009,9 +1063,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: localhost only)")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--tls-cert", help="TLS certificate PEM file (enables HTTPS)")
+    parser.add_argument("--tls-key", help="TLS private key PEM file (requires --tls-cert)")
     args = parser.parse_args()
+    if bool(args.tls_cert) != bool(args.tls_key):
+        parser.error("--tls-cert und --tls-key müssen zusammen angegeben werden")
     server = ThreadingHTTPServer((args.host, args.port), RequestHandler)
-    LOGGER.info("VoxWerk is ready at http://%s:%d", args.host, args.port)
+    scheme = "http"
+    if args.tls_cert:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(args.tls_cert, args.tls_key)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        scheme = "https"
+    LOGGER.info("VoxWerk is ready at %s://%s:%d", scheme, args.host, args.port)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

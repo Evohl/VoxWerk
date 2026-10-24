@@ -1481,6 +1481,30 @@
         content.append(title, meta, details);
         const actions = document.createElement('div');
         actions.className = 'ww-row-actions';
+        if (run.status === 'completed') {
+          actions.append(makeActionButton('Wakeword herunterladen', 'quiet', async event => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            try {
+              const response = await fetch(`/api/wakeword/runs/${encodeURIComponent(project.id)}/${encodeURIComponent(run.id)}/export`);
+              if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.error || 'Wakeword-Export fehlgeschlagen.');
+              }
+              const blob = await response.blob();
+              const downloadUrl = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = downloadUrl;
+              link.download = `${project.id}-${run.id}-wakeword.zip`;
+              link.click();
+              window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+            } catch (error) {
+              alert(error.message);
+            } finally {
+              button.disabled = false;
+            }
+          }));
+        }
         actions.append(makeActionButton('Löschen', 'quiet danger', async () => {
           if (!confirm(`Datensatz-Snapshot ${run.id} löschen?`)) return;
           try { await wakewordRequest(`/api/wakeword/runs/${encodeURIComponent(project.id)}/${encodeURIComponent(run.id)}/delete`, {}); await renderWakewordDetail(); }
@@ -1716,14 +1740,20 @@
         button._recorder.stop();
         return;
       }
+      if (!window.isSecureContext) {
+        alert('Der Browser sperrt den Mikrofonzugriff über unverschlüsseltes HTTP im LAN. Öffne VoxWerk über HTTPS mit einem vom Gerät vertrauten Zertifikat; localhost ist davon ausgenommen.');
+        return;
+      }
       if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
         alert('Dieser Browser unterstützt keine Mikrofonaufnahme. Bitte eine Audiodatei auswählen.');
         return;
       }
       try {
+        const kind = uploadForm.elements.kind.value;
         const selectedInput = storedSettings.input;
         const stream = await navigator.mediaDevices.getUserMedia({ audio: selectedInput ? { deviceId: { exact: selectedInput } } : true });
-        const recorder = new MediaRecorder(stream);
+        const mimeType = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/webm', 'audio/ogg'].find(type => MediaRecorder.isTypeSupported(type));
+        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
         const chunks = [];
         recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
         recorder.onstop = async () => {
@@ -1731,16 +1761,72 @@
           button.dataset.recording = 'false';
           button.textContent = 'Mikrofonaufnahme starten';
           if (!chunks.length) return;
-          const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-          const filename = `aufnahme-${Date.now()}.${blob.type.includes('ogg') ? 'ogg' : 'webm'}`;
-          const values = Object.fromEntries(new FormData(uploadForm));
-          await uploadWakewordSample(project.id, values.kind, values.title || filename.replace(/\.[^.]+$/, ''), filename, blob);
+          try {
+            const recording = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+            const wav = await recordingToTrainingWav(recording, kind);
+            const filename = `aufnahme-${Date.now()}.wav`;
+            const values = Object.fromEntries(new FormData(uploadForm));
+            await uploadWakewordSample(project.id, kind, values.title || filename.replace(/\.[^.]+$/, ''), filename, wav);
+          } catch (error) {
+            alert(`Aufnahme konnte nicht gespeichert werden: ${error.message}`);
+          }
         };
         button._recorder = recorder;
         button.dataset.recording = 'true';
         button.textContent = 'Aufnahme beenden';
         recorder.start();
       } catch (error) { alert(`Mikrofon nicht verfügbar: ${error.message}`); }
+    }
+    async function recordingToTrainingWav(recording, kind) {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) throw new Error('Dieser Browser kann Audio nicht in Trainings-WAV umwandeln.');
+      const context = new AudioContextClass();
+      try {
+        const decoded = await context.decodeAudioData(await recording.arrayBuffer());
+        const duration = decoded.duration;
+        const minimum = kind === 'positive' ? 0.5 : 0.3;
+        const maximum = kind === 'positive' ? 1.5 : 3.0;
+        if (!(duration > minimum && duration < maximum)) {
+          throw new Error(`${kind === 'positive' ? 'Positive' : 'Negative'} Aufnahmen müssen länger als ${minimum} s und kürzer als ${maximum} s sein (Aufnahme: ${duration.toFixed(2)} s).`);
+        }
+        const sampleRate = 16000;
+        const frameCount = Math.ceil(duration * sampleRate);
+        const mono = new Float32Array(frameCount);
+        for (let frame = 0; frame < frameCount; frame += 1) {
+          const sourcePosition = frame * decoded.sampleRate / sampleRate;
+          const left = Math.floor(sourcePosition);
+          const fraction = sourcePosition - left;
+          for (let channel = 0; channel < decoded.numberOfChannels; channel += 1) {
+            const samples = decoded.getChannelData(channel);
+            const first = samples[Math.min(left, samples.length - 1)] || 0;
+            const second = samples[Math.min(left + 1, samples.length - 1)] || 0;
+            mono[frame] += (first + (second - first) * fraction) / decoded.numberOfChannels;
+          }
+        }
+        const wav = new ArrayBuffer(44 + frameCount * 2);
+        const view = new DataView(wav);
+        const writeText = (offset, value) => [...value].forEach((character, index) => view.setUint8(offset + index, character.charCodeAt(0)));
+        writeText(0, 'RIFF');
+        view.setUint32(4, 36 + frameCount * 2, true);
+        writeText(8, 'WAVE');
+        writeText(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeText(36, 'data');
+        view.setUint32(40, frameCount * 2, true);
+        for (let frame = 0; frame < frameCount; frame += 1) {
+          const value = Math.max(-1, Math.min(1, mono[frame]));
+          view.setInt16(44 + frame * 2, value < 0 ? value * 0x8000 : value * 0x7fff, true);
+        }
+        return new Blob([wav], { type: 'audio/wav' });
+      } finally {
+        await context.close();
+      }
     }
     async function uploadWakewordSample(wakewordId, kind, title, filename, blob) {
       const url = new URL('/api/wakeword/samples/upload', location.origin);

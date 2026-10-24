@@ -5,10 +5,11 @@ import tempfile
 import threading
 import unittest
 import wave
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from voxwerk.app import GENERATION_JOBS, GENERATION_JOBS_LOCK, _run_sample_generation
+from voxwerk.app import GENERATION_JOBS, GENERATION_JOBS_LOCK, _run_sample_generation, _wakeword_run_export
 from voxwerk.wakeword_data import WakewordStore, validate_slug
 
 
@@ -126,6 +127,31 @@ class WakewordStoreTests(unittest.TestCase):
         )
         self.assertEqual(updated["status"], "queued")
         self.assertEqual(self.store.list_runs(self.project["id"])[0]["training"]["parameters"]["training_steps"], 10000)
+
+    def test_completed_wakeword_run_can_be_downloaded_as_model_archive(self) -> None:
+        positive = self.store.save_sample(self.project["id"], "positive", "positive.wav", b"positive")
+        negative = self.store.save_sample(self.project["id"], "negative", "negative.wav", b"negative")
+        run = self.store.create_run(self.project["id"], {"sample_ids": [positive["id"], negative["id"]]})
+        run_dir = self.store._project_dir(self.project["id"]) / "runs" / run["id"]
+        model_dir = run_dir / "model"
+        model_dir.mkdir()
+        (model_dir / "streaming.tflite").write_bytes(b"model bytes")
+        (model_dir / "streaming.json").write_text('{"wake_word": "Hey Nova"}', encoding="utf-8")
+        self.store.update_run(self.project["id"], run["id"], status="completed", training={"model_directory": "model"})
+
+        archive_bytes, filename = _wakeword_run_export(self.store, self.project["id"], run["id"])
+
+        self.assertEqual(filename, f"{self.project['id']}-{run['id']}-wakeword.zip")
+        with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+            self.assertEqual(set(archive.namelist()), {"models/streaming.tflite", "models/streaming.json"})
+            self.assertEqual(archive.read("models/streaming.tflite"), b"model bytes")
+
+    def test_wakeword_run_export_rejects_unfinished_run(self) -> None:
+        positive = self.store.save_sample(self.project["id"], "positive", "positive.wav", b"positive")
+        negative = self.store.save_sample(self.project["id"], "negative", "negative.wav", b"negative")
+        run = self.store.create_run(self.project["id"], {"sample_ids": [positive["id"], negative["id"]]})
+        with self.assertRaisesRegex(ValueError, "abgeschlossene"):
+            _wakeword_run_export(self.store, self.project["id"], run["id"])
 
     def test_deleting_wakeword_removes_only_its_project_data(self) -> None:
         other = self.store.save_wakeword({"name": "Hey Other", "phrase": "Hey Other"})
