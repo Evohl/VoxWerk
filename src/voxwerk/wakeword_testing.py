@@ -167,18 +167,25 @@ def _model_label(model_id: str, model_path: Path, store: WakewordStore) -> str:
     return model_path.stem.replace("_", " ")
 
 
+def _test_worker_command(python: Path, workspace: Path) -> list[str]:
+    worker_script = Path(__file__).with_name("wakeword_test_worker.py")
+    return [str(python), "-u", str(worker_script), str(workspace)]
+
+
+def _test_worker_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    return environment
+
+
 def _score_with_worker(python: Path, workspace: Path, model_path: Path, wav_path: Path, reset: bool) -> float:
     global TEST_WORKER
-    source_root = str(Path(__file__).resolve().parent.parent)
-    environment = os.environ.copy()
-    existing_path = environment.get("PYTHONPATH", "")
-    environment["PYTHONPATH"] = os.pathsep.join(item for item in (source_root, existing_path) if item)
     with TEST_WORKER_LOCK:
         if TEST_WORKER is None or TEST_WORKER.poll() is not None:
             TEST_WORKER = subprocess.Popen(
-                [str(python), "-u", "-m", "voxwerk.wakeword_test_worker", str(workspace)],
+                _test_worker_command(python, workspace),
                 cwd=workspace,
-                env=environment,
+                env=_test_worker_environment(),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
@@ -315,16 +322,12 @@ def _score_pcm_with_worker(
     reset: bool,
 ) -> tuple[float, int, bool]:
     global TEST_WORKER
-    source_root = str(Path(__file__).resolve().parent.parent)
-    environment = os.environ.copy()
-    existing_path = environment.get("PYTHONPATH", "")
-    environment["PYTHONPATH"] = os.pathsep.join(item for item in (source_root, existing_path) if item)
     with TEST_WORKER_LOCK:
         if TEST_WORKER is None or TEST_WORKER.poll() is not None:
             TEST_WORKER = subprocess.Popen(
-                [str(python), "-u", "-m", "voxwerk.wakeword_test_worker", str(workspace)],
+                _test_worker_command(python, workspace),
                 cwd=workspace,
-                env=environment,
+                env=_test_worker_environment(),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,

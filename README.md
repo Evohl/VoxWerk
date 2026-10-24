@@ -12,7 +12,7 @@ VoxWerk is a local-first speech studio for browsing Piper voices, downloading on
 - Install the wakeword package (microWakeWord, its isolated Python environment, and fixed training datasets) from Settings into `~/.venv/wakeword`; the location is fixed.
 - Choose the working directory for recordings, voice models, wakeword projects, samples, and training runs in Settings; the default is `~/.local/share/voxwerk` and existing data is copied, with the source kept as a backup.
 - Create and manage isolated wakeword projects, reusable training profiles, audio samples, explicit dataset snapshots, and local microWakeWord training runs.
-- Download TFLite models and matching manifests from completed VoxWerk wakeword runs as ZIP archives; models are never flashed automatically.
+- Download TFLite models and ESPHome/microWakeWord JSON manifests from completed VoxWerk wakeword runs as ZIP archives named after the wakeword; models are never flashed automatically. If training did not produce a tuned manifest, the export uses a 0.5 cutoff that must be evaluated and adjusted on the target device before relying on it.
 - Test finished wakeword TFLite models with microphone clips, audio files, or a fast live-microphone score; test recordings are not retained.
 - Live scoring keeps a continuous 16-kHz stream and persistent microWakeWord state, with the ESPHome model stride, five-score window, and one-second warm-up. The speaker's separate VAD gate is not reproduced.
 - Keep models and recordings in the user's data directory; keep device choices in browser-local storage.

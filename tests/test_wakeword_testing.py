@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import io
+import os
 import tempfile
 import unittest
 import wave
@@ -9,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from voxwerk.wakeword_data import WakewordStore
-from voxwerk.wakeword_testing import _resolve_model, list_test_models, score_test_audio, score_test_pcm_frame
+from voxwerk.wakeword_testing import _resolve_model, _test_worker_command, _test_worker_environment, list_test_models, score_test_audio, score_test_pcm_frame
 from voxwerk.wakeword_test_worker import complete_pcm_frames, streaming_score
 
 
@@ -122,6 +123,14 @@ class WakewordModelDiscoveryTests(unittest.TestCase):
 
 
 class PcmFrameAssemblyTests(unittest.TestCase):
+    def test_worker_uses_script_path_and_not_app_site_packages(self) -> None:
+        command = _test_worker_command(Path("/wakeword/bin/python"), Path("/wakeword"))
+        self.assertEqual(command[0:2], ["/wakeword/bin/python", "-u"])
+        self.assertEqual(Path(command[2]).name, "wakeword_test_worker.py")
+        self.assertEqual(command[3], "/wakeword")
+        with patch.dict(os.environ, {"PYTHONPATH": "/voxwerk/python314/site-packages"}):
+            self.assertNotIn("PYTHONPATH", _test_worker_environment())
+
     def test_streaming_score_uses_five_zero_initialized_slots(self) -> None:
         warming = streaming_score([0.0, 0.0, 0.0, 0.0, 0.72], False)
         self.assertAlmostEqual(warming["score"], 0.144)

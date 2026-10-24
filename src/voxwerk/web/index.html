@@ -177,10 +177,15 @@
     .sample-group { margin-top: 16px; }
     .sample-group:first-child { margin-top: 0; }
     .sample-group-head { min-height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); }
+    .sample-group-head, .run-sample-choice-head { cursor: pointer; list-style: none; }
+    .sample-group-head::-webkit-details-marker, .run-sample-choice-head::-webkit-details-marker { display: none; }
+    .sample-group-head::before, .run-sample-choice-head::before { content: "▸"; margin-right: 8px; color: var(--acid); transition: transform .15s ease; }
+    details[open] > .sample-group-head::before, details[open] > .run-sample-choice-head::before { transform: rotate(90deg); }
     .sample-group-head h3 { margin: 0; font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
     .sample-group-head.positive h3 { color: #82d5aa; }
     .sample-group-head.negative h3 { color: #f1aa80; }
     .sample-group-controls { display: flex; align-items: center; gap: 12px; }
+    .sample-group-actions { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
     .sample-select-all { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; white-space: nowrap; }
     .sample-select { width: 18px; height: 18px; min-height: 18px; margin: 0; accent-color: var(--acid); }
     .sample-group-controls .button { min-height: 30px; padding-inline: 9px; }
@@ -189,6 +194,8 @@
     .sample-title-input { width: 100%; min-width: 0; height: 32px; padding: 5px 8px; color: var(--ink); background: #111a1e; border: 1px solid var(--line); border-radius: 2px; font-size: 11px; }
     .sample-kind-select { width: 96px; height: 32px; min-height: 32px; padding: 0 22px 0 8px; color: var(--ink); background: #111a1e; border: 1px solid var(--line); border-radius: 2px; font-size: 11px; }
     #run-sample-choice { display: grid; gap: 6px; }
+    .run-sample-choice-head { display: flex; align-items: center; color: var(--muted); font-size: 11px; }
+    .run-sample-choice-list { padding: 8px 0; }
     .generator-voice label { min-width: 0; }
     .generator-voice label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ww-checkbox { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
@@ -1036,6 +1043,7 @@
       } catch (error) {
         section.querySelector('#wakeword-test-live-status').textContent = `Mikrofon nicht verfügbar: ${error.message}`;
         stopLiveWakewordTest(section);
+        section.querySelector('#wakeword-test-live-status').textContent = `Live-Test konnte nicht starten: ${error.message}`;
       }
       section.querySelector('#wakeword-test-live').textContent = wakewordTestLive ? 'Live stoppen' : 'Live starten';
     }
@@ -1129,8 +1137,8 @@
         liveStatus.textContent = `${result.model_label} · ${recognitionState} · kontinuierlicher PCM-Stream`;
       } catch (error) {
         if (error.name !== 'AbortError') {
-          liveStatus.textContent = error.message;
           stopLiveWakewordTest(section);
+          liveStatus.textContent = `Live-Test abgebrochen: ${error.message}`;
         }
       } finally {
         wakewordStreamAbortController = null;
@@ -1196,7 +1204,7 @@
         <form class="wakeword-form" id="sample-upload"><div><label class="label">Typ</label><select name="kind"><option value="positive">Positiv · Wakeword enthalten</option><option value="negative">Negativ · Wakeword nicht enthalten</option></select></div>
         <div><label class="label">Audiodatei</label><input name="audio" type="file" accept="audio/*" required></div><div class="wide"><label class="label">Titel</label><input name="title" maxlength="100" placeholder="Sprecher oder Notiz"></div><div class="wide actions"><button class="button quiet" type="submit">Audio hinzufügen</button><button class="button quiet" id="record-sample" type="button">Mikrofonaufnahme starten</button></div></form>
         <div class="ww-section" id="sample-generator"><div class="section-head"><h2>Samples generieren</h2><span class="micro">Piper · lokal</span></div><form id="generator-form" class="wakeword-form"><div><label class="label" for="generator-kind">Beispieltyp</label><select id="generator-kind" name="kind"><option value="positive">Positiv · Wakeword sagen</option><option value="negative">Negativ · Wakeword nicht sagen</option></select></div><div><label class="label" for="generator-total">Gesamtzahl</label><input id="generator-total" name="total_samples" type="number" min="1" max="500" step="1" value="20" required></div><div><label class="label" for="generator-tempo">Tempo-Streuung</label><div class="range-row"><input id="generator-tempo" name="tempo_variation" type="range" min="0" max="30" step="5" value="20"><span class="range-value" id="generator-tempo-value">±20 %</span></div></div><div class="wide"><span class="label">Installierte Stimmen · Gewicht relativ zueinander</span><div id="generator-voices"></div></div><div class="wide generator-count" id="generator-selection-summary"></div><div class="wide actions"><button class="button primary" id="generate-samples" type="submit" ${voicesData.voices.length ? '' : 'disabled'}>Samples generieren</button></div><div class="wide generator-progress" id="generator-progress" role="status" aria-live="polite"></div></form></div>
-        <div id="sample-groups"><section class="sample-group"><div class="sample-group-head positive"><h3>Positive Samples</h3><span class="micro" data-sample-count="positive">0</span></div><div id="positive-samples"></div></section><section class="sample-group"><div class="sample-group-head negative"><h3>Negative Samples</h3><span class="micro" data-sample-count="negative">0</span></div><div id="negative-samples"></div></section></div>`;
+        <div id="sample-groups"><details class="sample-group" data-sample-group="positive"><summary class="sample-group-head positive"><h3>Positive Samples</h3><span class="micro" data-sample-count="positive">0</span></summary><div class="sample-group-controls" data-group-controls="positive"></div><div id="positive-samples"></div></details><details class="sample-group" data-sample-group="negative"><summary class="sample-group-head negative"><h3>Negative Samples</h3><span class="micro" data-sample-count="negative">0</span></summary><div class="sample-group-controls" data-group-controls="negative"></div><div id="negative-samples"></div></details></div>`;
       const generatorForm = sampleSection.querySelector('#generator-form');
       const generatorVoices = sampleSection.querySelector('#generator-voices');
       const generatorKind = generatorForm.elements.kind;
@@ -1311,7 +1319,7 @@
       };
       const sampleCounts = { positive: 0, negative: 0 };
       const updateBulkControls = kind => {
-        const group = sampleSection.querySelector(`[data-sample-count="${kind}"]`).closest('.sample-group-head');
+        const group = sampleSection.querySelector(`[data-sample-group="${kind}"]`);
         const selectAll = group.querySelector('[data-select-all]');
         const removeSelected = group.querySelector('[data-delete-selected]');
         const checkboxes = [...sampleRows[kind].querySelectorAll('.sample-select')];
@@ -1321,11 +1329,10 @@
         removeSelected.disabled = selectedCount === 0;
       };
       for (const kind of ['positive', 'negative']) {
-        const group = sampleSection.querySelector(`[data-sample-count="${kind}"]`).closest('.sample-group-head');
-        const count = group.querySelector('[data-sample-count]');
+        const group = sampleSection.querySelector(`[data-sample-group="${kind}"]`);
+        const controlsHost = group.querySelector(`[data-group-controls="${kind}"]`);
         const controls = document.createElement('div');
-        controls.className = 'sample-group-controls';
-        controls.append(count);
+        controls.className = 'sample-group-actions';
         const selectLabel = document.createElement('label');
         selectLabel.className = 'sample-select-all';
         const selectAll = document.createElement('input');
@@ -1359,7 +1366,7 @@
           }
         });
         controls.append(selectLabel, removeSelected);
-        group.append(controls);
+        controlsHost.append(controls);
       }
       for (const sample of samplesData.samples) {
         const row = document.createElement('div');
@@ -1416,6 +1423,7 @@
       }
       for (const kind of ['positive', 'negative']) {
         sampleSection.querySelector(`[data-sample-count="${kind}"]`).textContent = `${sampleCounts[kind]} Samples`;
+        sampleSection.querySelector(`[data-sample-group="${kind}"]`).open = sampleCounts[kind] < 20;
         if (!sampleCounts[kind]) sampleRows[kind].innerHTML = '<div class="sample-empty">Noch keine Samples dieser Art.</div>';
       }
       projectPane.append(sampleSection);
@@ -1427,7 +1435,7 @@
       if (samplesData.samples.length) {
         const runForm = document.createElement('form');
         runForm.className = 'wakeword-form';
-        runForm.innerHTML = `<div class="wide"><span class="label">Samples in neuen Snapshot aufnehmen</span><div id="run-sample-choice"></div></div><div class="wide actions"><button class="button primary" type="submit" ${project.profile_id ? '' : 'disabled'}>Datensatz-Snapshot erstellen</button></div>`;
+        runForm.innerHTML = `<div class="wide"><details id="run-sample-details"><summary class="run-sample-choice-head"></summary><div id="run-sample-choice" class="run-sample-choice-list"></div></details></div><div class="wide actions"><button class="button primary" type="submit" ${project.profile_id ? '' : 'disabled'}>Datensatz-Snapshot erstellen</button></div>`;
         if (!project.profile_id) {
           const requirement = document.createElement('div');
           requirement.className = 'wide actions';
@@ -1451,6 +1459,15 @@
           label.append(checkbox, text);
           choice.append(label);
         }
+        const runSampleDetails = runForm.querySelector('#run-sample-details');
+        const runSampleSummary = runSampleDetails.querySelector('summary');
+        const updateRunSampleSummary = () => {
+          const selectedCount = choice.querySelectorAll('input:checked').length;
+          runSampleSummary.textContent = `${selectedCount} von ${samplesData.samples.length} Samples für Snapshot ausgewählt`;
+        };
+        choice.addEventListener('change', updateRunSampleSummary);
+        runSampleDetails.open = samplesData.samples.length < 20;
+        updateRunSampleSummary();
         runForm.addEventListener('submit', async event => {
           event.preventDefault();
           const sample_ids = [...choice.querySelectorAll('input:checked')].map(input => input.value);
@@ -1495,7 +1512,8 @@
               const downloadUrl = URL.createObjectURL(blob);
               const link = document.createElement('a');
               link.href = downloadUrl;
-              link.download = `${project.id}-${run.id}-wakeword.zip`;
+              const wakewordFilename = project.name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 52) || 'wakeword';
+              link.download = `${wakewordFilename}-wakeword.zip`;
               link.click();
               window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
             } catch (error) {

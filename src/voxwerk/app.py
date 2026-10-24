@@ -425,16 +425,42 @@ def _wakeword_run_export(store: WakewordStore, wakeword_id: str, run_id: str) ->
     ]
     if not models:
         raise ValueError("Der Trainingslauf enthält kein exportierbares TFLite-Modell")
+    wakeword_slug = safe_slug(str(project.get("name") or wakeword_id))
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as output:
-        for model_path in models:
-            relative_path = model_path.relative_to(model_root)
-            archive_path = PurePosixPath("models", *relative_path.parts).as_posix()
+        for index, model_path in enumerate(models, start=1):
+            model_name = f"{wakeword_slug}.tflite" if len(models) == 1 else f"{wakeword_slug}-{index}.tflite"
+            archive_directory = PurePosixPath("models", wakeword_slug)
+            archive_path = str(archive_directory / model_name)
             output.write(model_path, archive_path)
             manifest_path = model_path.with_suffix(".json")
-            if manifest_path.is_file() and not manifest_path.is_symlink() and manifest_path.resolve().is_relative_to(model_root.resolve()):
-                output.write(manifest_path, str(PurePosixPath(archive_path).with_suffix(".json")))
-    return archive.getvalue(), f"{wakeword_id}-{run_id}-wakeword.zip"
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() and not manifest_path.is_symlink() else {}
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                manifest = {}
+            if not isinstance(manifest, dict):
+                manifest = {}
+            micro = manifest.get("micro")
+            if not isinstance(micro, dict):
+                micro = {}
+            micro.setdefault("probability_cutoff", 0.5)
+            micro.setdefault("feature_step_size", 10)
+            micro.setdefault("sliding_window_size", 5)
+            micro.setdefault("tensor_arena_size", 35000)
+            micro.setdefault("minimum_esphome_version", "2024.7.0")
+            language = str(project.get("language", ""))[:2].lower()
+            manifest.update({
+                "type": "micro",
+                "wake_word": str(project.get("name") or wakeword_id),
+                "author": "Custom",
+                "website": "",
+                "model": model_name,
+                "trained_languages": [language] if re.fullmatch(r"[a-z]{2}", language) else [],
+                "version": 2,
+                "micro": micro,
+            })
+            output.writestr(str(archive_directory / f"{wakeword_slug}.json"), json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+    return archive.getvalue(), f"{wakeword_slug}-wakeword.zip"
 
 
 def _run_sample_generation(

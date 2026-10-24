@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import tempfile
 import threading
 import unittest
@@ -141,10 +142,14 @@ class WakewordStoreTests(unittest.TestCase):
 
         archive_bytes, filename = _wakeword_run_export(self.store, self.project["id"], run["id"])
 
-        self.assertEqual(filename, f"{self.project['id']}-{run['id']}-wakeword.zip")
+        self.assertEqual(filename, "hey-nova-wakeword.zip")
         with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
-            self.assertEqual(set(archive.namelist()), {"models/streaming.tflite", "models/streaming.json"})
-            self.assertEqual(archive.read("models/streaming.tflite"), b"model bytes")
+            self.assertEqual(set(archive.namelist()), {"models/hey-nova/hey-nova.tflite", "models/hey-nova/hey-nova.json"})
+            self.assertEqual(archive.read("models/hey-nova/hey-nova.tflite"), b"model bytes")
+            manifest = json.loads(archive.read("models/hey-nova/hey-nova.json"))
+            self.assertEqual(manifest["wake_word"], "Hey Nova")
+            self.assertEqual(manifest["model"], "hey-nova.tflite")
+            self.assertEqual(manifest["micro"]["probability_cutoff"], 0.5)
 
     def test_wakeword_run_export_rejects_unfinished_run(self) -> None:
         positive = self.store.save_sample(self.project["id"], "positive", "positive.wav", b"positive")
